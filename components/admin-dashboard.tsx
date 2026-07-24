@@ -3,12 +3,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bot,
-  Check,
   CircleHelp,
-  Code2,
-  Copy,
   ExternalLink,
-  FolderKanban,
+  Building2,
   LayoutDashboard,
   LoaderCircle,
   Menu,
@@ -22,12 +19,12 @@ import {
   LogOut,
 } from "lucide-react";
 import { logout } from "@/app/admin/actions";
+import { SnippetManager } from "@/components/snippet-manager";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Project } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 type FormState = { name: string; webhookUrl: string };
 const EMPTY_FORM: FormState = { name: "", webhookUrl: "" };
@@ -82,7 +79,7 @@ function ProjectModal({
               id="project-modal-title"
               className="text-xl font-semibold tracking-tight text-slate-950"
             >
-              {project ? "Editar projeto" : "Novo projeto"}
+              {project ? "Editar empresa" : "Nova empresa"}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               Conecte o widget ao fluxo que responderá as mensagens.
@@ -163,7 +160,7 @@ function ProjectModal({
               {saving ? (
                 <LoaderCircle className="size-4 animate-spin" />
               ) : null}
-              {project ? "Salvar alterações" : "Criar projeto"}
+              {project ? "Salvar alterações" : "Criar empresa"}
             </Button>
           </div>
         </form>
@@ -203,8 +200,8 @@ function DeleteModal({
           Excluir “{project.name}”?
         </h2>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          O widget desse projeto deixará de responder imediatamente. Esta ação
-          não pode ser desfeita.
+          Todos os snippets dessa empresa deixarão de responder imediatamente.
+          Esta ação não pode ser desfeita.
         </p>
         {error ? (
           <p className="mt-4 text-sm text-red-700" role="alert">
@@ -221,7 +218,7 @@ function DeleteModal({
             ) : (
               <Trash2 className="size-4" />
             )}
-            Excluir projeto
+            Excluir empresa
           </Button>
         </div>
       </div>
@@ -233,28 +230,14 @@ function ProjectCard({
   project,
   onEdit,
   onDelete,
+  onManageSnippets,
 }: {
   project: Project;
   onEdit: () => void;
   onDelete: () => void;
+  onManageSnippets: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [origin, setOrigin] = useState("");
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setOrigin(window.location.origin);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  const snippet = `<script src="${origin || "https://seu-dominio.com"}/widget.js" data-project-id="${project.id}" defer></script>`;
-
-  async function copySnippet() {
-    await navigator.clipboard.writeText(snippet);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  }
 
   return (
     <Card className="group flex min-h-64 flex-col overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-lg hover:shadow-violet-950/5">
@@ -312,31 +295,23 @@ function ProjectCard({
             month: "short",
           }).format(new Date(project.created_at))}
         </div>
-        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-500">
-            <Code2 className="size-3.5" />
-            Snippet de incorporação
-          </div>
-          <code className="line-clamp-2 break-all font-mono text-[11px] leading-5 text-slate-600">
-            {snippet}
-          </code>
+        <div className="mt-5 rounded-lg border border-violet-100 bg-violet-50/60 p-3">
+          <p className="text-xs font-medium text-violet-700">
+            Snippets independentes
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Configure ícone, cor, tema e posição para cada site.
+          </p>
         </div>
       </div>
       <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-3">
         <Button
-          variant="ghost"
-          className={cn(
-            "h-8 w-full justify-center",
-            copied && "text-emerald-700",
-          )}
-          onClick={copySnippet}
+          variant="outline"
+          className="h-9 w-full justify-center bg-white"
+          onClick={onManageSnippets}
         >
-          {copied ? (
-            <Check className="size-4" />
-          ) : (
-            <Copy className="size-4" />
-          )}
-          {copied ? "Snippet copiado" : "Copiar snippet"}
+          <Bot className="size-4" />
+          Gerenciar snippets
         </Button>
       </div>
     </Card>
@@ -352,6 +327,7 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
     Project | null | undefined
   >(undefined);
   const [deleteProject, setDeleteProject] = useState<Project | null>(null);
+  const [snippetProject, setSnippetProject] = useState<Project | null>(null);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -465,8 +441,8 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
           href="#projects"
           className="flex items-center gap-3 rounded-lg bg-violet-500/15 px-3 py-2.5 text-sm font-medium text-violet-300"
         >
-          <FolderKanban className="size-4" />
-          Projetos
+          <Building2 className="size-4" />
+          Empresas
           <span className="ml-auto rounded-full bg-violet-500/20 px-2 py-0.5 text-[11px] text-violet-300">
             {projects.length}
           </span>
@@ -526,7 +502,7 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
           <div className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">
             Workspace
             <span className="text-slate-300">/</span>
-            <span className="font-medium text-slate-800">Projetos</span>
+            <span className="font-medium text-slate-800">Empresas</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden max-w-52 truncate text-sm text-slate-500 md:block">
@@ -548,10 +524,10 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
                 Central de atendimento
               </p>
               <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
-                Projetos
+                Empresas
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                Crie, conecte e incorpore assistentes em qualquer site.
+                Gerencie empresas e seus snippets de atendimento.
               </p>
             </div>
             <Button
@@ -562,7 +538,7 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
               }}
             >
               <Plus className="size-4" />
-              Novo projeto
+              Nova empresa
             </Button>
           </div>
 
@@ -571,14 +547,14 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <Input
                 className="pl-9"
-                placeholder="Buscar projetos..."
+                placeholder="Buscar empresas..."
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                aria-label="Buscar projetos"
+                aria-label="Buscar empresas"
               />
             </div>
             <span className="hidden text-sm text-slate-500 sm:block">
-              {projects.length} {projects.length === 1 ? "projeto" : "projetos"}
+              {projects.length} {projects.length === 1 ? "empresa" : "empresas"}
             </span>
           </div>
 
@@ -618,6 +594,7 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
                     setActionError(null);
                     setDeleteProject(project);
                   }}
+                  onManageSnippets={() => setSnippetProject(project)}
                 />
               ))}
             </div>
@@ -625,20 +602,20 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
             <Card className="mt-6 grid min-h-80 place-items-center border-dashed p-8 text-center shadow-none">
               <div>
                 <div className="mx-auto grid size-12 place-items-center rounded-xl bg-violet-50 text-violet-600">
-                  <FolderKanban className="size-5" />
+                  <Building2 className="size-5" />
                 </div>
                 <h2 className="mt-4 font-semibold text-slate-900">
-                  {query ? "Nenhum projeto encontrado" : "Seu primeiro projeto"}
+                  {query ? "Nenhuma empresa encontrada" : "Sua primeira empresa"}
                 </h2>
                 <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
                   {query
                     ? "Tente buscar com outro nome."
-                    : "Cadastre um webhook do n8n e receba um snippet pronto para incorporar."}
+                    : "Cadastre um webhook do n8n e configure um ou mais snippets para incorporar."}
                 </p>
                 {!query ? (
                   <Button className="mt-5" onClick={() => setModalProject(null)}>
                     <Plus className="size-4" />
-                    Criar projeto
+                    Criar empresa
                   </Button>
                 ) : null}
               </div>
@@ -663,6 +640,12 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
           error={actionError}
           onClose={() => setDeleteProject(null)}
           onConfirm={confirmDelete}
+        />
+      ) : null}
+      {snippetProject ? (
+        <SnippetManager
+          project={snippetProject}
+          onClose={() => setSnippetProject(null)}
         />
       ) : null}
     </div>

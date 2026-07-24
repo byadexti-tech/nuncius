@@ -1,4 +1,5 @@
 import { getProject } from "@/lib/projects";
+import { getSnippet } from "@/lib/snippets";
 import { SupabaseConfigurationError } from "@/lib/supabase/server";
 import { isValidProjectId } from "@/lib/validation";
 
@@ -51,12 +52,17 @@ export async function POST(request: Request) {
   try {
     const projectId =
       typeof body.projectId === "string" ? body.projectId.trim() : "";
+    const snippetId =
+      typeof body.snippetId === "string" ? body.snippetId.trim() : "";
     const sessionId =
       typeof body.sessionId === "string" ? body.sessionId.trim() : "";
     const message = typeof body.message === "string" ? body.message.trim() : "";
 
-    if (!isValidProjectId(projectId)) {
-      return json({ error: "Projeto inválido." }, { status: 400 });
+    if (
+      (!snippetId || !isValidProjectId(snippetId)) &&
+      (!projectId || !isValidProjectId(projectId))
+    ) {
+      return json({ error: "Snippet inválido." }, { status: 400 });
     }
     if (!sessionId || sessionId.length > 120) {
       return json({ error: "Sessão inválida." }, { status: 400 });
@@ -68,7 +74,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const project = await getProject(projectId);
+    const snippet = snippetId ? await getSnippet(snippetId) : null;
+    if (snippetId && !snippet) {
+      return json({ error: "Snippet não encontrado." }, { status: 404 });
+    }
+
+    const resolvedProjectId = snippet?.project_id ?? projectId;
+    const project = await getProject(resolvedProjectId);
     if (!project) {
       return json({ error: "Projeto não encontrado." }, { status: 404 });
     }
@@ -76,7 +88,12 @@ export async function POST(request: Request) {
     const webhookResponse = await fetch(project.webhook_url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId, sessionId, message }),
+      body: JSON.stringify({
+        projectId: resolvedProjectId,
+        snippetId: snippet?.id,
+        sessionId,
+        message,
+      }),
       cache: "no-store",
       signal: AbortSignal.timeout(30_000),
     });
