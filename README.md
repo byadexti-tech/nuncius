@@ -26,10 +26,9 @@ workflow do n8n.
 3. Copie `.env.example` para `.env.local` e informe:
 
 ```env
-SUPABASE_URL=https://seu-projeto.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
 NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sua-publishable-key
+SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
 ```
 
 Use exclusivamente a **service role key** no servidor. Ela não possui o prefixo
@@ -43,6 +42,48 @@ npm run dev
 ```
 
 Abra [http://localhost:3000](http://localhost:3000).
+
+## Ambientes local e online
+
+A aplicação não mantém uma URL fixa no código:
+
+- em desenvolvimento, usa `http://localhost:3000` (ou a porta definida em
+  `PORT`);
+- em deployments da Vercel, usa automaticamente
+  `VERCEL_PROJECT_PRODUCTION_URL` ou `VERCEL_URL`;
+- se a produção usa domínio próprio, configure `SITE_URL` apenas no ambiente
+  **Production** da Vercel, por exemplo `https://app.seudominio.com`.
+
+O snippet do widget usa a origem da página administrativa aberta. Assim, ao
+copiá-lo localmente ele aponta para localhost; ao copiá-lo no deployment ele
+aponta para o domínio online correspondente.
+
+### Variáveis na Vercel
+
+Cadastre estas três variáveis em **Production**, **Preview** e **Development**:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://SEU_PROJECT_REF.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+```
+
+Os valores ficam em **Supabase > Project Settings > API**. A publishable key
+pode ir ao navegador; a service role é secreta e deve existir somente nas
+variáveis protegidas da Vercel e no `.env.local`.
+
+### URLs no Supabase Auth
+
+Em **Supabase > Authentication > URL Configuration**, use:
+
+- **Site URL:** o domínio canônico de produção;
+- **Redirect URLs:** `http://localhost:3000/**`, o domínio de produção com
+  `/**` e, se usar deployments de Preview, o padrão dos seus domínios
+  `vercel.app`.
+
+O login atual é por e-mail e senha e não depende de callback externo, mas essas
+URLs deixam confirmação por e-mail, recuperação de senha e provedores OAuth
+preparados para funcionar nos dois ambientes.
 
 ## Site e administração
 

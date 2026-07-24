@@ -7,14 +7,15 @@ let client: SupabaseClient | null = null;
 export class SupabaseConfigurationError extends Error {
   constructor() {
     super(
-      "Supabase não configurado. Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.",
+      "Supabase não configurado. Defina NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY e SUPABASE_SERVICE_ROLE_KEY.",
     );
     this.name = "SupabaseConfigurationError";
   }
 }
 
 export function getSupabaseAdmin() {
-  const url = process.env.SUPABASE_URL;
+  const url =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !serviceRoleKey) {
