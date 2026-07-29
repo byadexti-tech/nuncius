@@ -1,7 +1,12 @@
-import { requireAdminResponse } from "@/lib/auth";
+import { requireProjectAccess, unauthorizedResponse } from "@/lib/auth";
 import { getProject } from "@/lib/projects";
 import { createSnippet, listSnippets } from "@/lib/snippets";
 import { SupabaseConfigurationError } from "@/lib/supabase/server";
+import {
+  getRequestId,
+  logError,
+  recordSecurityEvent,
+} from "@/lib/observability";
 import {
   isValidProjectId,
   validateSnippetInput,
@@ -9,8 +14,11 @@ import {
 
 type SnippetsContext = { params: Promise<{ projectId: string }> };
 
-function serverError(error: unknown) {
-  console.error("[snippets]", error);
+function serverError(error: unknown, requestId?: string) {
+  logError("snippets_request_failed", error, {
+    route: "/api/projects/[projectId]/snippets",
+    requestId,
+  });
 
   if (error instanceof SupabaseConfigurationError) {
     return Response.json({ error: error.message }, { status: 503 });
@@ -29,13 +37,12 @@ async function readProjectId(context: SnippetsContext) {
 
 export async function GET(_request: Request, context: SnippetsContext) {
   try {
-    const unauthorized = await requireAdminResponse();
-    if (unauthorized) return unauthorized;
-
     const projectId = await readProjectId(context);
     if (!projectId) {
       return Response.json({ error: "ID de projeto inválido." }, { status: 400 });
     }
+    const access = await requireProjectAccess(projectId);
+    if (!access.ok) return unauthorizedResponse(access.status);
 
     if (!(await getProject(projectId))) {
       return Response.json(
@@ -51,14 +58,14 @@ export async function GET(_request: Request, context: SnippetsContext) {
 }
 
 export async function POST(request: Request, context: SnippetsContext) {
+  const requestId = getRequestId(request.headers);
   try {
-    const unauthorized = await requireAdminResponse();
-    if (unauthorized) return unauthorized;
-
     const projectId = await readProjectId(context);
     if (!projectId) {
       return Response.json({ error: "ID de projeto inválido." }, { status: 400 });
     }
+    const access = await requireProjectAccess(projectId, ["owner", "admin", "editor"]);
+    if (!access.ok) return unauthorizedResponse(access.status);
 
     if (!(await getProject(projectId))) {
       return Response.json(
@@ -73,11 +80,21 @@ export async function POST(request: Request, context: SnippetsContext) {
     }
 
     const snippet = await createSnippet(projectId, result.data);
+    await recordSecurityEvent({
+      headers: request.headers,
+      eventType: "snippet.created",
+      outcome: "success",
+      actorUserId: access.user.id,
+      resourceType: "snippet",
+      resourceId: snippet.id,
+      requestId,
+      metadata: { projectId },
+    });
     return Response.json({ snippet }, { status: 201 });
   } catch (error) {
     if (error instanceof SyntaxError) {
       return Response.json({ error: "JSON inválido." }, { status: 400 });
     }
-    return serverError(error);
+    return serverError(error, requestId);
   }
 }

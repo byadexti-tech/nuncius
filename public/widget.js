@@ -26,10 +26,23 @@
   }
 
   var defaults = {
+    launcherType: "icon",
     launcherIcon: "message-circle",
+    launcherImage: null,
     primaryColor: "#6D46E8",
     themeMode: "system",
+    appearanceCustomizationsEnabled: false,
+    lightBackgroundColor: "#FFFFFF",
+    lightTextColor: "#172033",
+    darkBackgroundColor: "#151823",
+    darkTextColor: "#F4F5F8",
+    lightPrimaryColor: "#6D46E8",
+    lightPrimaryTextColor: "#FFFFFF",
+    darkPrimaryColor: "#6D46E8",
+    darkPrimaryTextColor: "#FFFFFF",
+    fontFamily: "Inter",
     position: "bottom-right",
+    autoStartEnabled: false,
   };
 
   function loadConfig() {
@@ -77,30 +90,45 @@
     var shadow = host.attachShadow({ mode: "open" });
     document.body.appendChild(host);
 
+    if (snippetId) {
+      fetch(apiBase + "/api/telemetry/widget", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          snippetId: snippetId,
+          sessionId: sessionId,
+        }),
+        keepalive: true,
+      }).catch(function () {
+        // Telemetry must never prevent the widget from loading.
+      });
+    }
+
     var style = document.createElement("style");
     style.textContent = [
       ":host{all:initial;color-scheme:light}",
       "*,*::before,*::after{box-sizing:border-box}",
-      ".nc-wrap{--nc-primary:#6D46E8;--nc-surface:#fff;--nc-surface-soft:#f8f9fc;--nc-text:#172033;--nc-muted:#9298a8;--nc-border:#e7e9ef;--nc-shadow:rgba(30,22,60,.2);position:fixed;z-index:2147483647;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--nc-text)}",
+      ".nc-wrap{--nc-primary:#6D46E8;--nc-button-text:#fff;--nc-surface:#fff;--nc-surface-soft:#f8f9fc;--nc-text:#172033;--nc-muted:#9298a8;--nc-border:#e7e9ef;--nc-shadow:rgba(30,22,60,.2);position:fixed;z-index:2147483647;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--nc-text)}",
       ".nc-wrap.nc-bottom-right{right:22px;bottom:22px}.nc-wrap.nc-bottom-left{left:22px;bottom:22px}.nc-wrap.nc-top-right{right:22px;top:22px}.nc-wrap.nc-top-left{left:22px;top:22px}",
-      ".nc-launcher{width:58px;height:58px;border:0;border-radius:18px;background:var(--nc-primary);color:#fff;display:grid;place-items:center;cursor:pointer;box-shadow:0 14px 38px color-mix(in srgb,var(--nc-primary) 42%,transparent);transition:transform .18s ease,filter .18s ease}",
+      ".nc-launcher{width:58px;height:58px;border:0;border-radius:18px;background:var(--nc-primary);color:var(--nc-button-text);display:grid;place-items:center;cursor:pointer;box-shadow:0 14px 38px color-mix(in srgb,var(--nc-primary) 42%,transparent);transition:transform .18s ease,filter .18s ease}",
       ".nc-launcher:hover,.nc-send:hover{filter:brightness(.9)}.nc-launcher:hover{transform:translateY(-2px)}.nc-launcher:focus-visible,.nc-send:focus-visible,.nc-close:focus-visible{outline:3px solid color-mix(in srgb,var(--nc-primary) 28%,transparent);outline-offset:3px}",
       ".nc-icon{width:25px;height:25px;display:block}",
+      ".nc-image{width:36px;height:36px;display:block;object-fit:contain}.nc-avatar .nc-image{width:32px;height:32px}",
       ".nc-panel{position:absolute;width:min(380px,calc(100vw - 28px));height:min(600px,calc(100vh - 120px));min-height:420px;background:var(--nc-surface);border:1px solid var(--nc-border);border-radius:22px;box-shadow:0 24px 70px var(--nc-shadow);overflow:hidden;display:flex;flex-direction:column;opacity:0;visibility:hidden;transform:translateY(12px) scale(.98);transition:opacity .18s ease,transform .18s ease,visibility .18s}",
       ".nc-bottom-right .nc-panel{right:0;bottom:72px;transform-origin:bottom right}.nc-bottom-left .nc-panel{left:0;bottom:72px;transform-origin:bottom left}.nc-top-right .nc-panel{right:0;top:72px;transform-origin:top right}.nc-top-left .nc-panel{left:0;top:72px;transform-origin:top left}",
       ".nc-panel.nc-open{opacity:1;visibility:visible;transform:translateY(0) scale(1)}",
-      ".nc-header{height:78px;flex:0 0 auto;padding:16px 16px 16px 18px;background:var(--nc-primary);color:#fff;display:flex;align-items:center;gap:12px}",
+      ".nc-header{height:78px;flex:0 0 auto;padding:16px 16px 16px 18px;background:var(--nc-primary);color:var(--nc-button-text);display:flex;align-items:center;gap:12px}",
       ".nc-avatar{width:42px;height:42px;border-radius:13px;background:rgba(255,255,255,.18);display:grid;place-items:center}",
       ".nc-title{font-size:15px;font-weight:700;line-height:1.3}.nc-status{font-size:12px;opacity:.82;margin-top:3px;display:flex;align-items:center;gap:6px}.nc-dot{width:6px;height:6px;border-radius:50%;background:#6ee7b7}",
       ".nc-close{margin-left:auto;width:34px;height:34px;border:0;border-radius:9px;background:transparent;color:#fff;display:grid;place-items:center;cursor:pointer}.nc-close:hover{background:rgba(255,255,255,.13)}",
       ".nc-messages{flex:1;overflow-y:auto;padding:20px 16px;background:var(--nc-surface-soft);scroll-behavior:smooth}.nc-messages::-webkit-scrollbar{width:6px}.nc-messages::-webkit-scrollbar-thumb{background:var(--nc-border);border-radius:10px}",
       ".nc-row{display:flex;margin-bottom:12px}.nc-row.nc-user{justify-content:flex-end}",
       ".nc-bubble{max-width:82%;padding:11px 13px;border-radius:15px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;background:var(--nc-surface);color:var(--nc-text);border:1px solid var(--nc-border);border-bottom-left-radius:5px}",
-      ".nc-user .nc-bubble{background:var(--nc-primary);color:#fff;border-color:var(--nc-primary);border-bottom-left-radius:15px;border-bottom-right-radius:5px}",
+      ".nc-user .nc-bubble{background:var(--nc-primary);color:var(--nc-button-text);border-color:var(--nc-primary);border-bottom-left-radius:15px;border-bottom-right-radius:5px}",
       ".nc-time{font-size:10px;color:var(--nc-muted);margin-top:5px;padding:0 4px}.nc-user .nc-time{text-align:right}",
       ".nc-compose{flex:0 0 auto;padding:12px;border-top:1px solid var(--nc-border);background:var(--nc-surface);display:flex;align-items:flex-end;gap:8px}",
       ".nc-input{min-width:0;flex:1;resize:none;max-height:96px;height:42px;border:1px solid var(--nc-border);border-radius:13px;padding:10px 12px;font:13.5px/20px inherit;color:var(--nc-text);background:var(--nc-surface);outline:none}.nc-input:focus{border-color:var(--nc-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--nc-primary) 12%,transparent)}.nc-input::placeholder{color:var(--nc-muted)}",
-      ".nc-send{width:42px;height:42px;flex:0 0 auto;border:0;border-radius:12px;background:var(--nc-primary);color:#fff;display:grid;place-items:center;cursor:pointer}.nc-send:disabled{opacity:.48;cursor:default}",
+      ".nc-send{width:42px;height:42px;flex:0 0 auto;border:0;border-radius:12px;background:var(--nc-primary);color:var(--nc-button-text);display:grid;place-items:center;cursor:pointer}.nc-send:disabled{opacity:.48;cursor:default}",
       ".nc-typing{display:inline-flex;gap:4px;align-items:center;height:18px}.nc-typing i{width:5px;height:5px;border-radius:50%;background:var(--nc-muted);animation:nc-pulse 1.2s infinite}.nc-typing i:nth-child(2){animation-delay:.15s}.nc-typing i:nth-child(3){animation-delay:.3s}",
       "@keyframes nc-pulse{0%,60%,100%{opacity:.35;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}",
       ".nc-powered{text-align:center;font-size:9px;color:var(--nc-muted);background:var(--nc-surface);padding:0 0 8px}",
@@ -121,7 +149,14 @@
       "circle-help":
         '<svg class="nc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 1 1 5.3 1.9c-.9.8-2.4 1.3-2.4 3.1M12 18h.01"/></svg>',
     };
-    var chatIcon = icons[config.launcherIcon] || icons["message-circle"];
+    var chatArtwork =
+      config.launcherType === "image" &&
+      typeof config.launcherImage === "string" &&
+      config.launcherImage.indexOf("data:image/png;base64,") === 0
+        ? '<img class="nc-image" src="' +
+          config.launcherImage +
+          '" alt="" aria-hidden="true">'
+        : icons[config.launcherIcon] || icons["message-circle"];
     var closeIcon =
       '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
     var sendIcon =
@@ -133,7 +168,7 @@
     wrap.innerHTML =
       '<section class="nc-panel" role="dialog" aria-label="Chat Nuncius" aria-hidden="true">' +
       '<header class="nc-header"><div class="nc-avatar">' +
-      chatIcon +
+      chatArtwork +
       '</div><div><div class="nc-title">Como podemos ajudar?</div><div class="nc-status"><span class="nc-dot"></span>Online agora</div></div>' +
       '<button class="nc-close" type="button" aria-label="Fechar chat">' +
       closeIcon +
@@ -145,9 +180,15 @@
       "</button></form>" +
       '<div class="nc-powered">Powered by Nuncius</div></section>' +
       '<button class="nc-launcher" type="button" aria-label="Abrir chat" aria-expanded="false">' +
-      chatIcon +
+      chatArtwork +
       "</button>";
 
+    if (config.appearanceCustomizationsEnabled && /^[A-Za-z0-9 ]{1,80}$/.test(config.fontFamily)) {
+      var fontLink = document.createElement("link");
+      fontLink.rel = "stylesheet";
+      fontLink.href = "https://fonts.googleapis.com/css2?family=" + encodeURIComponent(config.fontFamily).replace(/%20/g, "+") + ":wght@400;500;600;700&display=swap";
+      shadow.appendChild(fontLink);
+    }
     shadow.appendChild(style);
     shadow.appendChild(wrap);
 
@@ -159,6 +200,14 @@
       }
       var dark = mode === "dark" || (mode === "system" && colorQuery.matches);
       wrap.classList.toggle("nc-dark", dark);
+      if (config.appearanceCustomizationsEnabled) {
+        wrap.style.setProperty("--nc-primary", dark ? config.darkPrimaryColor : config.lightPrimaryColor);
+        wrap.style.setProperty("--nc-button-text", dark ? config.darkPrimaryTextColor : config.lightPrimaryTextColor);
+        wrap.style.setProperty("--nc-surface", dark ? config.darkBackgroundColor : config.lightBackgroundColor);
+        wrap.style.setProperty("--nc-surface-soft", dark ? config.darkBackgroundColor : config.lightBackgroundColor);
+        wrap.style.setProperty("--nc-text", dark ? config.darkTextColor : config.lightTextColor);
+        wrap.style.fontFamily = '"' + config.fontFamily + '",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+      }
       host.style.colorScheme = dark ? "dark" : "light";
     }
     resolveTheme();
@@ -181,6 +230,7 @@
     var sendButton = shadow.querySelector(".nc-send");
     var isOpen = false;
     var sending = false;
+    var autoStartStarted = false;
 
     function now() {
       return new Intl.DateTimeFormat("pt-BR", {
@@ -225,13 +275,74 @@
       launcher.setAttribute("aria-expanded", String(isOpen));
       launcher.setAttribute("aria-label", isOpen ? "Fechar chat" : "Abrir chat");
       if (isOpen) {
+        startConversation();
         window.setTimeout(function () {
           input.focus();
         }, 100);
       }
     }
 
-    appendMessage("Olá! 👋 Como posso ajudar você hoje?", "bot");
+    function requestReply(payload) {
+      return fetch(apiBase + "/api/chat?snippetId=" + encodeURIComponent(snippetId || ""), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          Object.assign(
+            {
+              snippetId: snippetId,
+              projectId: legacyProjectId,
+              sessionId: sessionId,
+            },
+            payload,
+          ),
+        ),
+      }).then(function (response) {
+        return response
+          .json()
+          .catch(function () {
+            return {};
+          })
+          .then(function (data) {
+            if (!response.ok) {
+              throw new Error(
+                data.error || "Não foi possível obter uma resposta.",
+              );
+            }
+            return data;
+          });
+      });
+    }
+
+    function startConversation() {
+      if (!config.autoStartEnabled || autoStartStarted) return;
+
+      autoStartStarted = true;
+      sending = true;
+      sendButton.disabled = true;
+      input.disabled = true;
+      var typing = appendTyping();
+
+      requestReply({ event: "chat_opened" })
+        .then(function (data) {
+          typing.remove();
+          if (data.reply) appendMessage(data.reply, "bot");
+        })
+        .catch(function (error) {
+          console.error("[Nuncius] Falha ao iniciar conversa:", error);
+          typing.remove();
+          appendMessage("Olá! 👋 Como posso ajudar você hoje?", "bot");
+        })
+        .finally(function () {
+          sending = false;
+          sendButton.disabled = false;
+          input.disabled = false;
+          input.focus();
+        });
+    }
+
+    if (!config.autoStartEnabled) {
+      appendMessage("Olá! 👋 Como posso ajudar você hoje?", "bot");
+    }
 
     launcher.addEventListener("click", function () {
       toggle();
@@ -264,31 +375,7 @@
       input.style.height = "42px";
       var typing = appendTyping();
 
-      fetch(apiBase + "/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          snippetId: snippetId,
-          projectId: legacyProjectId,
-          sessionId: sessionId,
-          message: message,
-        }),
-      })
-        .then(function (response) {
-          return response
-            .json()
-            .catch(function () {
-              return {};
-            })
-            .then(function (data) {
-              if (!response.ok) {
-                throw new Error(
-                  data.error || "Não foi possível obter uma resposta.",
-                );
-              }
-              return data;
-            });
-        })
+      requestReply({ message: message })
         .then(function (data) {
           typing.remove();
           appendMessage(data.reply, "bot");

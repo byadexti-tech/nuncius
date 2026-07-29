@@ -1,12 +1,20 @@
 import { deleteProject, updateProject } from "@/lib/projects";
-import { requireAdminResponse } from "@/lib/auth";
+import { requireProjectAccess, unauthorizedResponse } from "@/lib/auth";
+import {
+  getRequestId,
+  logError,
+  recordSecurityEvent,
+} from "@/lib/observability";
 import { SupabaseConfigurationError } from "@/lib/supabase/server";
 import { isValidProjectId, validateProjectInput } from "@/lib/validation";
 
 type ProjectContext = { params: Promise<{ projectId: string }> };
 
-function serverError(error: unknown) {
-  console.error("[project]", error);
+function serverError(error: unknown, requestId?: string) {
+  logError("project_request_failed", error, {
+    route: "/api/projects/[projectId]",
+    requestId,
+  });
 
   if (error instanceof SupabaseConfigurationError) {
     return Response.json({ error: error.message }, { status: 503 });
@@ -24,14 +32,15 @@ async function readProjectId(context: ProjectContext) {
 }
 
 export async function PATCH(request: Request, context: ProjectContext) {
+  const requestId = getRequestId(request.headers);
   try {
-    const unauthorized = await requireAdminResponse();
-    if (unauthorized) return unauthorized;
-
     const projectId = await readProjectId(context);
     if (!projectId) {
       return Response.json({ error: "ID de projeto inválido." }, { status: 400 });
     }
+    const access = await requireProjectAccess(projectId, ["owner", "admin", "editor"]);
+    if (!access.ok) return unauthorizedResponse(access.status);
+    const user = access.user;
 
     const result = validateProjectInput(await request.json());
     if (!result.ok) {
@@ -46,24 +55,33 @@ export async function PATCH(request: Request, context: ProjectContext) {
       );
     }
 
+    await recordSecurityEvent({
+      headers: request.headers,
+      eventType: "project.updated",
+      outcome: "success",
+      actorUserId: user.id,
+      resourceType: "project",
+      resourceId: project.id,
+      requestId,
+    });
     return Response.json({ project });
   } catch (error) {
     if (error instanceof SyntaxError) {
       return Response.json({ error: "JSON inválido." }, { status: 400 });
     }
-    return serverError(error);
+    return serverError(error, requestId);
   }
 }
 
-export async function DELETE(_request: Request, context: ProjectContext) {
+export async function DELETE(request: Request, context: ProjectContext) {
+  const requestId = getRequestId(request.headers);
   try {
-    const unauthorized = await requireAdminResponse();
-    if (unauthorized) return unauthorized;
-
     const projectId = await readProjectId(context);
     if (!projectId) {
       return Response.json({ error: "ID de projeto inválido." }, { status: 400 });
     }
+    const access = await requireProjectAccess(projectId, ["owner", "admin"]);
+    if (!access.ok) return unauthorizedResponse(access.status);
 
     const deleted = await deleteProject(projectId);
     if (!deleted) {
@@ -73,8 +91,17 @@ export async function DELETE(_request: Request, context: ProjectContext) {
       );
     }
 
+    await recordSecurityEvent({
+      headers: request.headers,
+      eventType: "project.deleted",
+      outcome: "success",
+      actorUserId: access.user.id,
+      resourceType: "project",
+      resourceId: projectId,
+      requestId,
+    });
     return new Response(null, { status: 204 });
   } catch (error) {
-    return serverError(error);
+    return serverError(error, requestId);
   }
 }

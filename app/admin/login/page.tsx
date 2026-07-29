@@ -1,10 +1,19 @@
+"use client";
+
 import Link from "next/link";
 import { Bot, CheckCircle2, ShieldCheck } from "lucide-react";
+import { LanguageSelector } from "@/components/language-selector";
 import { LoginForm } from "@/components/login-form";
-
-export const dynamic = "force-dynamic";
+import { useI18n } from "@/lib/i18n";
 
 export default function AdminLoginPage() {
+  const { t } = useI18n();
+  const benefits = [
+    t("login.benefitRestricted"),
+    t("login.benefitSession"),
+    t("login.benefitWebhook"),
+  ];
+
   return (
     <main className="grid min-h-screen bg-slate-950 lg:grid-cols-[1.1fr_0.9fr]">
       <section className="relative hidden overflow-hidden p-12 lg:flex lg:flex-col">
@@ -19,23 +28,18 @@ export default function AdminLoginPage() {
         <div className="relative my-auto max-w-xl">
           <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1.5 text-xs font-medium text-violet-200">
             <ShieldCheck className="size-3.5" />
-            Área administrativa segura
+            {t("login.secureArea")}
           </div>
           <h1 className="text-4xl font-semibold leading-tight tracking-tight text-white xl:text-5xl">
-            Seus assistentes,
+            {t("login.heroLine1")}
             <br />
-            sob seu controle.
+            {t("login.heroLine2")}
           </h1>
           <p className="mt-5 max-w-lg text-base leading-7 text-slate-400">
-            Gerencie projetos, webhooks e snippets de incorporação em um único
-            lugar.
+            {t("login.heroDescription")}
           </p>
           <div className="mt-10 space-y-4 text-sm text-slate-300">
-            {[
-              "Acesso restrito a administradores",
-              "Sessão segura gerenciada pelo Supabase",
-              "Webhooks protegidos no servidor",
-            ].map((item) => (
+            {benefits.map((item) => (
               <div key={item} className="flex items-center gap-3">
                 <CheckCircle2 className="size-4 text-violet-400" />
                 {item}
@@ -50,6 +54,9 @@ export default function AdminLoginPage() {
 
       <section className="flex min-h-screen items-center justify-center bg-white px-5 py-12">
         <div className="w-full max-w-sm">
+          <div className="mb-8 flex justify-end">
+            <LanguageSelector />
+          </div>
           <Link
             href="/"
             className="mb-12 flex items-center gap-2.5 text-slate-950 lg:hidden"
@@ -59,16 +66,18 @@ export default function AdminLoginPage() {
             </span>
             <span className="font-semibold">Nuncius</span>
           </Link>
-          <p className="text-sm font-medium text-violet-600">Bem-vindo de volta</p>
+          <p className="text-sm font-medium text-violet-600">
+            {t("login.welcome")}
+          </p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-            Acesse sua conta
+            {t("login.title")}
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-500">
-            Use as credenciais administrativas para continuar.
+            {t("login.description")}
           </p>
           <LoginForm />
           <p className="mt-8 text-center text-xs leading-5 text-slate-400">
-            O acesso é monitorado e restrito a usuários autorizados.
+            {t("login.monitoring")}
           </p>
         </div>
       </section>

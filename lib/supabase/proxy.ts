@@ -1,17 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-function isAdminClaim(claims: Record<string, unknown> | undefined) {
-  const appMetadata = claims?.app_metadata;
-  return (
-    Boolean(appMetadata) &&
-    typeof appMetadata === "object" &&
-    (appMetadata as Record<string, unknown>).role === "admin"
-  );
-}
+export async function updateSession(request: NextRequest, requestId: string) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-request-id", requestId);
 
-export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  let response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,7 +22,9 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set(name, value);
           });
 
-          response = NextResponse.next({ request });
+          response = NextResponse.next({
+            request: { headers: requestHeaders },
+          });
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
           });
@@ -39,25 +37,30 @@ export async function updateSession(request: NextRequest) {
   );
 
   const { data } = await supabase.auth.getClaims();
-  const isAdmin = isAdminClaim(
-    data?.claims as Record<string, unknown> | undefined,
-  );
+  const isAuthenticated = Boolean(data?.claims?.sub);
   const isLoginPage = request.nextUrl.pathname === "/admin/login";
 
-  if (!isAdmin && !isLoginPage) {
+  if (!isAuthenticated && !isLoginPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/admin/login";
     url.search = "";
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    redirectResponse.headers.set("Cache-Control", "private, no-store");
+    redirectResponse.headers.set("X-Request-Id", requestId);
+    return redirectResponse;
   }
 
-  if (isAdmin && isLoginPage) {
+  if (isAuthenticated && isLoginPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/admin";
     url.search = "";
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    redirectResponse.headers.set("Cache-Control", "private, no-store");
+    redirectResponse.headers.set("X-Request-Id", requestId);
+    return redirectResponse;
   }
 
   response.headers.set("Cache-Control", "private, no-store");
+  response.headers.set("X-Request-Id", requestId);
   return response;
 }

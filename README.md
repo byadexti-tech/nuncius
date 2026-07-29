@@ -8,21 +8,23 @@ workflow do n8n.
 - painel responsivo com criação, edição, exclusão e busca de projetos;
 - site público separado do painel administrativo;
 - login administrativo com sessão SSR em cookies via Supabase Auth;
-- autorização por `app_metadata.role = "admin"` no painel e nas APIs de CRUD;
+- autorização por organização, membership e papel (`owner`, `admin`, `editor`,
+  `viewer` ou `billing`);
 - snippet de incorporação gerado por projeto;
 - widget isolado com Shadow DOM, sessão persistida no `localStorage` e layout
   responsivo;
-- API intermediária que mantém o webhook privado e encaminha
-  `projectId`, `sessionId` e `message`;
+- API intermediária que mantém o webhook privado e encaminha eventos do chat
+  com `projectId`, `snippetId`, `sessionId`, `message`, `event` e `hidden`;
+- saudação opcional gerada pelo n8n na primeira abertura do widget, sem exibir
+  a mensagem técnica de ativação;
 - persistência no Supabase com RLS habilitado;
 - validação de entrada, CORS no chat e timeout de 30 segundos para o webhook.
 
 ## Configuração
 
 1. Crie um projeto no Supabase.
-2. Execute
-   [`supabase/migrations/20260724000000_create_projects.sql`](./supabase/migrations/20260724000000_create_projects.sql)
-   no SQL Editor ou use o Supabase CLI.
+2. Aplique, em ordem, todas as migrations de
+   [`supabase/migrations`](./supabase/migrations) usando o Supabase CLI.
 3. Copie `.env.example` para `.env.local` e informe:
 
 ```env
@@ -90,15 +92,21 @@ preparados para funcionar nos dois ambientes.
 - `/` — site público;
 - `/admin/login` — login administrativo;
 - `/admin` — painel protegido;
-- `/api/projects` — CRUD protegido por sessão e papel de administrador;
+- `/api/projects` — CRUD protegido por sessão, organização e papel;
 - `/api/chat` — endpoint público usado pelo widget.
 
-Não existe cadastro público. Os administradores devem ser criados pelo servidor
-ou pelo painel do Supabase Auth com o seguinte `app_metadata`:
+Não existe cadastro público. As organizações e memberships são criadas pelo
+servidor. A migration de acesso cria uma organização legada e vincula os
+usuários existentes que possuíam o seguinte `app_metadata`:
 
 ```json
 { "role": "admin" }
 ```
+
+Depois da migração, esse campo não é usado para autorizar projetos. O acesso é
+determinado pelo membership do usuário em cada organização. Agências são
+organizações próprias e recebem acesso delegado às organizações de seus
+clientes por meio de vínculos explícitos.
 
 ## Contrato do webhook n8n
 
@@ -107,10 +115,18 @@ O Nuncius faz um `POST` com:
 ```json
 {
   "projectId": "uuid-do-projeto",
+  "snippetId": "uuid-do-snippet",
   "sessionId": "uuid-da-sessao",
-  "message": "Mensagem do visitante"
+  "message": "Mensagem do visitante",
+  "event": "message",
+  "hidden": false
 }
 ```
+
+Quando a opção **Saudação via webhook** está ativa no snippet, a primeira
+abertura do chat envia o mesmo payload com `event: "chat_opened"`,
+`hidden: true` e a mensagem de ativação configurada. Essa mensagem não aparece
+no widget; somente a resposta do workflow é exibida como saudação.
 
 O workflow deve responder com JSON usando uma das propriedades abaixo:
 

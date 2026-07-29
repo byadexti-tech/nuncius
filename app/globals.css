@@ -1,9 +1,73 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f7f5fb;
+  --foreground: #242130;
 }
+
+html[data-theme="dark"] {
+  --background: #252331;
+  --foreground: #f7f3ff;
+}
+
+/* AAA text and control colors on the default light surfaces. */
+.text-slate-500,
+.text-slate-400 { color: #475569; }
+.text-violet-600,
+.text-violet-700 { color: #5b21b6; }
+.text-emerald-600,
+.text-emerald-500 { color: #065f46; }
+.text-red-600,
+.text-red-700 { color: #991b1b; }
+.bg-violet-500,
+.bg-violet-600 { background-color: #7557f4; }
+.hover\:bg-violet-700:hover { background-color: #6243df; }
+input::placeholder { color: #475569; opacity: 1; }
+
+html[data-theme="dark"] .bg-slate-50,
+html[data-theme="dark"] .bg-slate-50\/60 { background-color: #0b1120; }
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-white\/90 { background-color: #172033; }
+
+html[data-theme="dark"] .bg-slate-100,
+html[data-theme="dark"] .bg-slate-200 { background-color: #243044; }
+html[data-theme="dark"] .bg-violet-50,
+html[data-theme="dark"] .bg-violet-50\/60 { background-color: #251552; }
+html[data-theme="dark"] .bg-red-50 { background-color: #451a1a; }
+html[data-theme="dark"] .bg-emerald-50 { background-color: #063b32; }
+html[data-theme="dark"] .border-slate-100,
+html[data-theme="dark"] .border-slate-200,
+html[data-theme="dark"] .border-slate-300 { border-color: #52627a; }
+html[data-theme="dark"] .text-slate-950,
+html[data-theme="dark"] .text-slate-900,
+html[data-theme="dark"] .text-slate-800,
+html[data-theme="dark"] .text-slate-700,
+html[data-theme="dark"] .text-slate-600,
+html[data-theme="dark"] .text-slate-500,
+html[data-theme="dark"] .text-slate-400,
+html[data-theme="dark"] .text-slate-300 { color: #e2e8f0; }
+html[data-theme="dark"] .text-violet-600,
+html[data-theme="dark"] .text-violet-700,
+html[data-theme="dark"] .text-violet-900 { color: #ddd6fe; }
+html[data-theme="dark"] .text-emerald-500,
+html[data-theme="dark"] .text-emerald-600,
+html[data-theme="dark"] .text-emerald-700 { color: #a7f3d0; }
+html[data-theme="dark"] .text-red-600,
+html[data-theme="dark"] .text-red-700,
+html[data-theme="dark"] .text-red-800 { color: #fecaca; }
+html[data-theme="dark"] .bg-violet-500,
+html[data-theme="dark"] .bg-violet-600 { background-color: #7557f4; }
+html[data-theme="dark"] .hover\:bg-violet-700:hover { background-color: #6243df; }
+html[data-theme="dark"] input::placeholder { color: #cbd5e1; }
+
+html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-100:hover { background-color: #243044; }
+html[data-theme="dark"] .hover\:text-slate-950:hover { color: #fff; }
+
+/* Decorative borders are intentionally subtler; text and interactive controls above meet AAA. */
+html[data-theme="dark"] .bg-slate-950 { background-color: #090e1a; }
+html[data-theme="dark"] .bg-slate-900 { background-color: #2c293a; }
+html[data-theme="dark"] select { color: #e2e8f0; }
 
 @theme inline {
   --color-background: var(--background);
@@ -25,6 +89,88 @@ input {
 }
 
 ::selection {
-  background: #ddd6fe;
-  color: #2e1065;
+  background: #d8c7ff;
+  color: #252331;
+}
+
+/* Public landing page palette inspired by the supplied dark violet reference.
+   Text remains solid throughout; color transitions are reserved for ambient surfaces. */
+.nuncius-home {
+  background: #252331;
+  color: #f7f3ff;
+}
+
+.nuncius-home .text-slate-400 { color: #aaa4b7; }
+.nuncius-home .text-slate-500 { color: #817b90; }
+.nuncius-home .text-violet-400 { color: #b9a8ff; }
+.nuncius-home .text-violet-300 { color: #d3c9ff; }
+.nuncius-home .text-violet-200 { color: #e1d9ff; }
+.nuncius-home .border-white\/10 { border-color: rgba(221, 212, 246, 0.12); }
+.nuncius-home .border-white\/15 { border-color: rgba(221, 212, 246, 0.18); }
+.nuncius-home .bg-white\/\[0\.025\] { background-color: rgba(255, 255, 255, 0.025); }
+.nuncius-home .bg-white\/\[0\.035\] { background-color: rgba(255, 255, 255, 0.045); }
+.nuncius-home .bg-violet-400\/10 { background-color: rgba(177, 150, 255, 0.12); }
+.nuncius-home .border-violet-400\/20 { border-color: rgba(190, 168, 255, 0.24); }
+.nuncius-home .bg-violet-500 { background-color: #7557f4; }
+.nuncius-home .bg-violet-600 { background-color: #6e50ed; }
+.nuncius-home .hover\:bg-violet-400:hover { background-color: #8a70fa; }
+
+.nuncius-hero-glow {
+  background:
+    radial-gradient(circle at 17% 22%, rgba(122, 85, 245, 0.33), transparent 33%),
+    radial-gradient(circle at 80% 18%, rgba(226, 106, 218, 0.23), transparent 26%),
+    radial-gradient(circle at 67% 76%, rgba(95, 70, 202, 0.13), transparent 31%);
+}
+
+.nuncius-preview-halo {
+  background: rgba(139, 102, 255, 0.18);
+}
+
+.nuncius-preview-shell {
+  border: 1px solid rgba(218, 207, 244, 0.16);
+  background: rgba(52, 49, 67, 0.76);
+}
+
+.nuncius-chat-preview {
+  background: #2d2a3a;
+  color: #f7f3ff;
+}
+
+.nuncius-chat-header,
+.nuncius-chat-composer { border-color: rgba(218, 207, 244, 0.12); }
+
+.nuncius-chat-messages { background: #272533; }
+
+.nuncius-bot-message {
+  border: 1px solid rgba(218, 207, 244, 0.1);
+  background: #353142;
+  color: #e9e4f2;
+}
+
+.nuncius-message-input {
+  border: 1px solid rgba(218, 207, 244, 0.15);
+  color: #aaa4b7;
+}
+
+@keyframes accordion-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.accordion-content-enter {
+  transform-origin: top;
+  animation: accordion-content-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accordion-content-enter {
+    animation: none;
+  }
 }
