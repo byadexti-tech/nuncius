@@ -1,5 +1,7 @@
+import dynamicIconImports from "lucide-react/dynamicIconImports";
 import {
-  SNIPPET_ICONS,
+  SNIPPET_ACTIVATION_MODES,
+  SNIPPET_AUTH_MODES,
   SNIPPET_LAUNCHER_TYPES,
   SNIPPET_ORIGIN_POLICIES,
   SNIPPET_POSITIONS,
@@ -129,12 +131,52 @@ export function validateSnippetInput(value: unknown): SnippetValidationResult {
   const lightPrimaryTextColor = typeof body.lightPrimaryTextColor === "string" ? body.lightPrimaryTextColor.trim().toUpperCase() : "";
   const darkPrimaryColor = typeof body.darkPrimaryColor === "string" ? body.darkPrimaryColor.trim().toUpperCase() : "";
   const darkPrimaryTextColor = typeof body.darkPrimaryTextColor === "string" ? body.darkPrimaryTextColor.trim().toUpperCase() : "";
+  const hidePoweredBy = body.hidePoweredBy === true;
+  const headerTitle =
+    typeof body.headerTitle === "string" ? body.headerTitle.trim() : "";
+  const showOnlineStatus = body.showOnlineStatus !== false;
   const fontFamily = typeof body.fontFamily === "string" ? body.fontFamily : "";
   const position = typeof body.position === "string" ? body.position : "";
   const autoStartEnabled = body.autoStartEnabled === true;
   const autoStartMessage =
     typeof body.autoStartMessage === "string"
       ? body.autoStartMessage.trim()
+      : "";
+  const activationMode =
+    typeof body.activationMode === "string" ? body.activationMode : "";
+  const activationPrompt =
+    typeof body.activationPrompt === "string"
+      ? body.activationPrompt.trim()
+      : "";
+  const rawActivationQuestions = Array.isArray(body.activationQuestions)
+    ? body.activationQuestions
+    : [];
+  if (
+    rawActivationQuestions.some((question) => typeof question !== "string")
+  ) {
+    return { ok: false, error: "As perguntas pré-definidas são inválidas." };
+  }
+  const activationQuestions = rawActivationQuestions.map((question) =>
+    (question as string).trim(),
+  );
+  const showInputWithPredefinedQuestions =
+    body.showInputWithPredefinedQuestions !== false;
+  const rawLoadingMessages = Array.isArray(body.loadingMessages)
+    ? body.loadingMessages
+    : [];
+  if (rawLoadingMessages.some((message) => typeof message !== "string")) {
+    return { ok: false, error: "As mensagens de espera são inválidas." };
+  }
+  const loadingMessages = rawLoadingMessages.map((message) =>
+    (message as string).trim(),
+  );
+  const authEnabled = body.authEnabled === true;
+  const authMode = typeof body.authMode === "string" ? body.authMode : "";
+  const authTitle =
+    typeof body.authTitle === "string" ? body.authTitle.trim() : "";
+  const authDescription =
+    typeof body.authDescription === "string"
+      ? body.authDescription.trim()
       : "";
   const isActive = body.isActive === true;
   const originPolicy = typeof body.originPolicy === "string" ? body.originPolicy : "";
@@ -157,7 +199,7 @@ export function validateSnippetInput(value: unknown): SnippetValidationResult {
   ) {
     return { ok: false, error: "Escolha usar um ícone ou uma imagem." };
   }
-  if (!SNIPPET_ICONS.includes(launcherIcon as SnippetInput["launcherIcon"])) {
+  if (!(launcherIcon in dynamicIconImports)) {
     return { ok: false, error: "Escolha um ícone válido." };
   }
   if (launcherType === "image" && !launcherImage) {
@@ -193,6 +235,12 @@ export function validateSnippetInput(value: unknown): SnippetValidationResult {
   if (!/^[A-Za-z0-9 ]{1,80}$/.test(fontFamily)) {
     return { ok: false, error: "Informe uma fonte do Google Fonts válida." };
   }
+  if (headerTitle.length < 2 || headerTitle.length > 80) {
+    return {
+      ok: false,
+      error: "O título do cabeçalho deve ter entre 2 e 80 caracteres.",
+    };
+  }
   if (!SNIPPET_POSITIONS.includes(position as SnippetInput["position"])) {
     return { ok: false, error: "Escolha uma posição válida." };
   }
@@ -200,6 +248,66 @@ export function validateSnippetInput(value: unknown): SnippetValidationResult {
     return {
       ok: false,
       error: "A mensagem de ativação deve ter entre 1 e 4.000 caracteres.",
+    };
+  }
+  if (
+    !SNIPPET_ACTIVATION_MODES.includes(
+      activationMode as SnippetInput["activationMode"],
+    )
+  ) {
+    return { ok: false, error: "Escolha um modo de ativação válido." };
+  }
+  if (activationPrompt.length < 1 || activationPrompt.length > 200) {
+    return {
+      ok: false,
+      error: "O texto de apresentação deve ter entre 1 e 200 caracteres.",
+    };
+  }
+  if (
+    activationQuestions.some(
+      (question) => question.length < 1 || question.length > 4000,
+    )
+  ) {
+    return {
+      ok: false,
+      error: "Cada pergunta deve ter entre 1 e 4.000 caracteres.",
+    };
+  }
+  if (
+    activationMode === "predefined_questions" &&
+    activationQuestions.length === 0
+  ) {
+    return {
+      ok: false,
+      error: "Adicione pelo menos uma pergunta pré-definida.",
+    };
+  }
+  if (
+    loadingMessages.length < 1 ||
+    loadingMessages.length > 10 ||
+    loadingMessages.some(
+      (message) => message.length < 1 || message.length > 80,
+    )
+  ) {
+    return {
+      ok: false,
+      error:
+        "Informe entre 1 e 10 mensagens de espera, com até 80 caracteres cada.",
+    };
+  }
+  if (!SNIPPET_AUTH_MODES.includes(authMode as SnippetInput["authMode"])) {
+    return { ok: false, error: "Escolha um método de autenticação válido." };
+  }
+  if (authTitle.length < 2 || authTitle.length > 80) {
+    return {
+      ok: false,
+      error: "O título da autenticação deve ter entre 2 e 80 caracteres.",
+    };
+  }
+  if (authDescription.length > 240) {
+    return {
+      ok: false,
+      error: "A descrição da autenticação deve ter até 240 caracteres.",
     };
   }
   if (!SNIPPET_ORIGIN_POLICIES.includes(originPolicy as SnippetInput["originPolicy"])) {
@@ -230,10 +338,22 @@ export function validateSnippetInput(value: unknown): SnippetValidationResult {
       lightPrimaryTextColor,
       darkPrimaryColor,
       darkPrimaryTextColor,
+      hidePoweredBy,
+      headerTitle,
+      showOnlineStatus,
       fontFamily,
       position: position as SnippetInput["position"],
       autoStartEnabled,
       autoStartMessage,
+      activationMode: activationMode as SnippetInput["activationMode"],
+      activationPrompt,
+      activationQuestions,
+      showInputWithPredefinedQuestions,
+      loadingMessages,
+      authEnabled,
+      authMode: authMode as SnippetInput["authMode"],
+      authTitle,
+      authDescription,
       isActive,
       originPolicy: originPolicy as SnippetInput["originPolicy"],
       allowedOrigins: allowedOrigins as string[],

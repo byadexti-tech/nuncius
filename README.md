@@ -18,7 +18,7 @@ workflow do n8n.
 - saudação opcional gerada pelo n8n na primeira abertura do widget, sem exibir
   a mensagem técnica de ativação;
 - persistência no Supabase com RLS habilitado;
-- validação de entrada, CORS no chat e timeout de 30 segundos para o webhook.
+- validação de entrada, CORS no chat e timeout de 3 minutos para o webhook.
 
 ## Configuração
 
@@ -128,15 +128,82 @@ abertura do chat envia o mesmo payload com `event: "chat_opened"`,
 `hidden: true` e a mensagem de ativação configurada. Essa mensagem não aparece
 no widget; somente a resposta do workflow é exibida como saudação.
 
+No modo **Perguntas pré-definidas**, o widget exibe o texto de apresentação e
+as opções cadastradas. Por padrão, o campo de texto também fica disponível
+desde o início; essa exibição pode ser desativada na configuração do snippet.
+A pergunta escolhida ou digitada é enviada ao mesmo webhook como uma mensagem
+normal (`event: "message"` e `hidden: false`).
+
+### Autenticação do visitante
+
+Quando a autenticação está habilitada no snippet, o mesmo webhook recebe
+primeiro o evento `authenticate`.
+
+No modo **Login e senha**:
+
+```json
+{
+  "event": "authenticate",
+  "projectId": "uuid-do-projeto",
+  "snippetId": "uuid-do-snippet",
+  "sessionId": "uuid-da-sessao",
+  "authentication": {
+    "method": "manual",
+    "username": "login-informado",
+    "password": "senha-informada"
+  }
+}
+```
+
+No modo **Automático**, o site deve gerar no servidor um token opaco e
+temporário e fornecê-lo ao widget pelo atributo `data-auth-token`:
+
+```html
+<script
+  src="https://seu-dominio.com/widget.js"
+  data-snippet-id="uuid-do-snippet"
+  data-auth-token="TOKEN_TEMPORARIO_DO_USUARIO"
+  defer
+></script>
+```
+
+O n8n recebe esse valor em `authentication.token`. Também é possível entregar
+ou renovar o token após o carregamento:
+
+```js
+window.dispatchEvent(
+  new CustomEvent("nuncius:authenticate", {
+    detail: {
+      snippetId: "uuid-do-snippet",
+      token: "TOKEN_TEMPORARIO_DO_USUARIO",
+    },
+  }),
+);
+```
+
+Nos dois modos, o workflow confirma o acesso com:
+
+```json
+{
+  "authenticated": true,
+  "authToken": "token-opaco-de-sessao"
+}
+```
+
+O `authToken` acompanha todas as mensagens seguintes em
+`authentication.token`. O workflow deve validá-lo em cada requisição e
+responder com HTTP `401` ou `403` quando estiver expirado ou inválido. Login,
+senha e token não são persistidos pelo Nuncius.
+
 O workflow deve responder com JSON usando uma das propriedades abaixo:
 
 ```json
 { "reply": "Resposta para o visitante" }
 ```
 
-Também são aceitas `response`, `message`, `output` ou `text`, além de uma
-resposta em texto puro. No n8n, configure o Webhook para responder ao final do
-workflow.
+Também são aceitas `response`, `message`, `mensagem`, `output` ou `text`, além
+de uma resposta em texto puro. No n8n, configure o Webhook para responder ao
+final do workflow.
 
 ## Incorporação
 
@@ -145,7 +212,7 @@ O painel gera o snippet completo:
 ```html
 <script
   src="https://seu-dominio.com/widget.js"
-  data-project-id="uuid-do-projeto"
+  data-snippet-id="uuid-do-snippet"
   defer
 ></script>
 ```
@@ -155,11 +222,11 @@ outro backend, opcionalmente use `data-api-url`.
 
 ## Segurança antes de produção
 
-O painel e o CRUD exigem autenticação e o papel `admin`, enquanto o banco
-continua acessível somente pela service role no servidor. Antes de publicar,
-adicione rate limiting ao endpoint `/api/chat`, proteção contra tentativas
-repetidas de login e uma política de URLs permitidas para webhooks conforme a
-sua infraestrutura.
+O painel e o CRUD exigem autenticação e papéis de organização, enquanto o banco
+continua acessível somente pela service role no servidor. O endpoint de login
+do widget possui limite de tentativas, mas o workflow do n8n também deve
+aplicar bloqueios progressivos e expiração curta dos tokens conforme a sua
+infraestrutura.
 
 ## Comandos
 

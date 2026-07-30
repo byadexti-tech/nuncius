@@ -11,6 +11,7 @@ import {
   isValidProjectId,
   validateSnippetInput,
 } from "@/lib/validation";
+import { SNIPPET_FONTS } from "@/lib/types";
 
 type SnippetsContext = { params: Promise<{ projectId: string }> };
 
@@ -44,7 +45,8 @@ export async function GET(_request: Request, context: SnippetsContext) {
     const access = await requireProjectAccess(projectId);
     if (!access.ok) return unauthorizedResponse(access.status);
 
-    if (!(await getProject(projectId))) {
+    const project = await getProject(projectId);
+    if (!project) {
       return Response.json(
         { error: "Projeto não encontrado." },
         { status: 404 },
@@ -67,7 +69,8 @@ export async function POST(request: Request, context: SnippetsContext) {
     const access = await requireProjectAccess(projectId, ["owner", "admin", "editor"]);
     if (!access.ok) return unauthorizedResponse(access.status);
 
-    if (!(await getProject(projectId))) {
+    const project = await getProject(projectId);
+    if (!project) {
       return Response.json(
         { error: "Projeto não encontrado." },
         { status: 404 },
@@ -77,6 +80,23 @@ export async function POST(request: Request, context: SnippetsContext) {
     const result = validateSnippetInput(await request.json());
     if (!result.ok) {
       return Response.json({ error: result.error }, { status: 400 });
+    }
+    if (result.data.hidePoweredBy && !project.is_premium) {
+      return Response.json(
+        { error: "Ocultar a assinatura está disponível apenas para projetos Premium." },
+        { status: 403 },
+      );
+    }
+    if (
+      !project.is_premium &&
+      !SNIPPET_FONTS.includes(
+        result.data.fontFamily as (typeof SNIPPET_FONTS)[number],
+      )
+    ) {
+      return Response.json(
+        { error: "Fontes personalizadas estão disponíveis apenas para projetos Premium." },
+        { status: 403 },
+      );
     }
 
     const snippet = await createSnippet(projectId, result.data);

@@ -10,6 +10,10 @@ import {
   recordSecurityEvent,
 } from "@/lib/observability";
 import { isValidProjectId } from "@/lib/validation";
+import {
+  WEBHOOK_TIMEOUT_MS,
+  WEBHOOK_TIMEOUT_SECONDS,
+} from "@/lib/webhook";
 import { corsHeaders, originAllowed } from "@/lib/widget-security";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +40,14 @@ function extractReply(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
 
   const value = payload as Record<string, unknown>;
-  for (const key of ["reply", "response", "message", "output", "text"]) {
+  for (const key of [
+    "reply",
+    "response",
+    "message",
+    "mensagem",
+    "output",
+    "text",
+  ]) {
     if (typeof value[key] === "string" && value[key].trim()) {
       return value[key].trim();
     }
@@ -108,6 +119,8 @@ export async function POST(request: Request) {
     const event = body.event === "chat_opened" ? "chat_opened" : "message";
     const submittedMessage =
       typeof body.message === "string" ? body.message.trim() : "";
+    const authToken =
+      typeof body.authToken === "string" ? body.authToken.trim() : "";
 
     if (
       (!snippetId || !isValidProjectId(snippetId)) &&
@@ -131,6 +144,18 @@ export async function POST(request: Request) {
     const allowed = snippet ? snippet.is_active && originAllowed(snippet, origin) : true;
     if (!allowed) {
       return json({ error: "Origem ou snippet não autorizado." }, requestId, { status: 403 }, origin, false);
+    }
+    if (
+      snippet?.auth_enabled &&
+      (!authToken || authToken.length > 4096)
+    ) {
+      return json(
+        { error: "Autenticação necessária." },
+        requestId,
+        { status: 401 },
+        origin,
+        true,
+      );
     }
 
     const resolvedProjectId = snippet?.project_id ?? projectId;
@@ -213,9 +238,12 @@ export async function POST(request: Request) {
         message,
         event,
         hidden: event === "chat_opened",
+        authentication: snippet?.auth_enabled
+          ? { token: authToken }
+          : undefined,
       }),
       cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     });
 
     const contentType = webhookResponse.headers.get("content-type") ?? "";
@@ -283,9 +311,23 @@ export async function POST(request: Request) {
         });
       }
       return json(
-        { error: "O assistente não conseguiu responder agora." },
+        {
+          error:
+            webhookResponse.status === 401 ||
+            webhookResponse.status === 403
+              ? "Sua autenticação expirou. Entre novamente."
+              : "O assistente não conseguiu responder agora.",
+        },
         requestId,
-        { status: 502 },
+        {
+          status:
+            webhookResponse.status === 401 ||
+            webhookResponse.status === 403
+              ? 401
+              : 502,
+        },
+        origin,
+        allowed,
       );
     }
 
@@ -370,7 +412,9 @@ export async function POST(request: Request) {
     }
     if (error instanceof Error && error.name === "TimeoutError") {
       return json(
-        { error: "O webhook demorou mais de 30 segundos para responder." },
+        {
+          error: `O webhook demorou mais de ${WEBHOOK_TIMEOUT_SECONDS} segundos para responder.`,
+        },
         requestId,
         { status: 504 },
       );

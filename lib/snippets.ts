@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { getProject } from "@/lib/projects";
 import type {
   PublicSnippetConfig,
   Snippet,
@@ -6,7 +7,7 @@ import type {
 } from "@/lib/types";
 
 const SNIPPET_COLUMNS =
-  "id,project_id,name,launcher_type,launcher_icon,launcher_image,primary_color,theme_mode,appearance_customizations_enabled,light_background_color,light_text_color,dark_background_color,dark_text_color,light_primary_color,light_primary_text_color,dark_primary_color,dark_primary_text_color,font_family,position,auto_start_enabled,auto_start_message,is_active,origin_policy,allowed_origins,created_at,updated_at";
+  "id,project_id,name,launcher_type,launcher_icon,launcher_image,primary_color,theme_mode,appearance_customizations_enabled,light_background_color,light_text_color,dark_background_color,dark_text_color,light_primary_color,light_primary_text_color,dark_primary_color,dark_primary_text_color,hide_powered_by,header_title,show_online_status,font_family,position,auto_start_enabled,auto_start_message,activation_mode,activation_prompt,activation_questions,show_input_with_predefined_questions,loading_messages,auth_enabled,auth_mode,auth_title,auth_description,is_active,origin_policy,allowed_origins,created_at,updated_at";
 
 function toDatabaseInput(input: SnippetInput) {
   return {
@@ -25,10 +26,23 @@ function toDatabaseInput(input: SnippetInput) {
     light_primary_text_color: input.lightPrimaryTextColor,
     dark_primary_color: input.darkPrimaryColor,
     dark_primary_text_color: input.darkPrimaryTextColor,
+    hide_powered_by: input.hidePoweredBy,
+    header_title: input.headerTitle,
+    show_online_status: input.showOnlineStatus,
     font_family: input.fontFamily,
     position: input.position,
     auto_start_enabled: input.autoStartEnabled,
     auto_start_message: input.autoStartMessage,
+    activation_mode: input.activationMode,
+    activation_prompt: input.activationPrompt,
+    activation_questions: input.activationQuestions,
+    show_input_with_predefined_questions:
+      input.showInputWithPredefinedQuestions,
+    loading_messages: input.loadingMessages,
+    auth_enabled: input.authEnabled,
+    auth_mode: input.authMode,
+    auth_title: input.authTitle,
+    auth_description: input.authDescription,
     is_active: input.isActive,
     origin_policy: input.originPolicy,
     allowed_origins: input.allowedOrigins,
@@ -62,6 +76,7 @@ export async function getPublicSnippetConfig(
 ): Promise<PublicSnippetConfig | null> {
   const snippet = await getSnippet(id);
   if (!snippet) return null;
+  const project = await getProject(snippet.project_id);
 
   return {
     id: snippet.id,
@@ -79,9 +94,22 @@ export async function getPublicSnippetConfig(
     lightPrimaryTextColor: snippet.light_primary_text_color,
     darkPrimaryColor: snippet.dark_primary_color,
     darkPrimaryTextColor: snippet.dark_primary_text_color,
+    hidePoweredBy: snippet.hide_powered_by && project?.is_premium === true,
+    headerTitle: snippet.header_title,
+    showOnlineStatus: snippet.show_online_status,
     fontFamily: snippet.font_family,
     position: snippet.position,
     autoStartEnabled: snippet.auto_start_enabled,
+    activationMode: snippet.activation_mode,
+    activationPrompt: snippet.activation_prompt,
+    activationQuestions: snippet.activation_questions,
+    showInputWithPredefinedQuestions:
+      snippet.show_input_with_predefined_questions,
+    loadingMessages: snippet.loading_messages,
+    authEnabled: snippet.auth_enabled,
+    authMode: snippet.auth_mode,
+    authTitle: snippet.auth_title,
+    authDescription: snippet.auth_description,
   };
 }
 
@@ -134,10 +162,23 @@ export async function duplicateSnippet(id: string): Promise<Snippet | null> {
     lightPrimaryTextColor: original.light_primary_text_color,
     darkPrimaryColor: original.dark_primary_color,
     darkPrimaryTextColor: original.dark_primary_text_color,
+    hidePoweredBy: original.hide_powered_by,
+    headerTitle: original.header_title,
+    showOnlineStatus: original.show_online_status,
     fontFamily: original.font_family,
     position: original.position,
     autoStartEnabled: original.auto_start_enabled,
     autoStartMessage: original.auto_start_message,
+    activationMode: original.activation_mode,
+    activationPrompt: original.activation_prompt,
+    activationQuestions: original.activation_questions,
+    showInputWithPredefinedQuestions:
+      original.show_input_with_predefined_questions,
+    loadingMessages: original.loading_messages,
+    authEnabled: original.auth_enabled,
+    authMode: original.auth_mode,
+    authTitle: original.auth_title,
+    authDescription: original.auth_description,
     isActive: false,
     originPolicy: "allowlist",
     allowedOrigins: [],

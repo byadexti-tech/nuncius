@@ -2,6 +2,10 @@ import { getProject, updateProject } from "@/lib/projects";
 import { requireProjectAccess, unauthorizedResponse } from "@/lib/auth";
 import { getRequestId, recordSecurityEvent } from "@/lib/observability";
 import { isValidProjectId, validateProjectInput } from "@/lib/validation";
+import {
+  WEBHOOK_TIMEOUT_MS,
+  WEBHOOK_TIMEOUT_SECONDS,
+} from "@/lib/webhook";
 
 type Context = { params: Promise<{ projectId: string }> };
 
@@ -37,7 +41,7 @@ export async function POST(request: Request, context: Context) {
       headers: { "Content-Type": "application/json", "X-Nuncius-Request-Id": requestId },
       body: JSON.stringify({ event: "connection_test", projectId: project.id }),
       cache: "no-store",
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     });
     const contentType = response.headers.get("content-type") ?? "";
     const raw = (await response.text()).slice(0, 500);
@@ -45,7 +49,7 @@ export async function POST(request: Request, context: Context) {
     await recordSecurityEvent({ headers: request.headers, eventType: "project.webhook_tested", outcome: response.ok ? "success" : "failure", actorUserId: access.user.id, resourceType: "project", resourceId: project.id, requestId, metadata: { status: response.status } });
     return Response.json({ ok: response.ok, status: response.status, responsePreview });
   } catch (error) {
-    const message = error instanceof Error && error.name === "TimeoutError" ? "Tempo limite de 8 segundos excedido." : "Não foi possível conectar ao webhook.";
+    const message = error instanceof Error && error.name === "TimeoutError" ? `Tempo limite de ${WEBHOOK_TIMEOUT_SECONDS} segundos excedido.` : "Não foi possível conectar ao webhook.";
     await recordSecurityEvent({ headers: request.headers, eventType: "project.webhook_tested", outcome: "failure", actorUserId: access.user.id, resourceType: "project", resourceId: project.id, requestId });
     return Response.json({ ok: false, error: message }, { status: 502 });
   }

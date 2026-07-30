@@ -1,6 +1,7 @@
 import { requireProjectAccess, unauthorizedResponse } from "@/lib/auth";
 import { deleteSnippet, updateSnippet } from "@/lib/snippets";
 import { getSnippet } from "@/lib/snippets";
+import { getProject } from "@/lib/projects";
 import { SupabaseConfigurationError } from "@/lib/supabase/server";
 import {
   getRequestId,
@@ -11,6 +12,7 @@ import {
   isValidSnippetId,
   validateSnippetInput,
 } from "@/lib/validation";
+import { SNIPPET_FONTS } from "@/lib/types";
 
 type SnippetContext = { params: Promise<{ snippetId: string }> };
 
@@ -50,6 +52,24 @@ export async function PATCH(request: Request, context: SnippetContext) {
     const result = validateSnippetInput(await request.json());
     if (!result.ok) {
       return Response.json({ error: result.error }, { status: 400 });
+    }
+    const project = await getProject(existing.project_id);
+    if (result.data.hidePoweredBy && !project?.is_premium) {
+      return Response.json(
+        { error: "Ocultar a assinatura está disponível apenas para projetos Premium." },
+        { status: 403 },
+      );
+    }
+    if (
+      !project?.is_premium &&
+      !SNIPPET_FONTS.includes(
+        result.data.fontFamily as (typeof SNIPPET_FONTS)[number],
+      )
+    ) {
+      return Response.json(
+        { error: "Fontes personalizadas estão disponíveis apenas para projetos Premium." },
+        { status: 403 },
+      );
     }
 
     const snippet = await updateSnippet(snippetId, result.data);

@@ -139,6 +139,7 @@ const ptBR = {
   "admin.deleteCompany": "Excluir empresa",
   "admin.actionsFor": "Ações de {name}",
   "admin.active": "Ativo",
+  "admin.premiumProject": "Projeto Premium",
   "admin.createdAt": "Criado em",
   "admin.independentSnippets": "Snippets independentes",
   "admin.independentSnippetsDescription":
@@ -210,7 +211,7 @@ const ptBR = {
   "snippet.changeImage": "Trocar imagem",
   "snippet.uploadImage": "Enviar imagem",
   "snippet.imageHelp":
-    "PNG ou WebP transparente, proporção 1:1, até 2 MB.",
+    "PNG, WebP ou SVG transparente, proporção 1:1, até 2 MB.",
   "snippet.primaryColor": "Cor primária",
   "snippet.theme": "Tema",
   "snippet.themeLight": "Claro",
@@ -377,6 +378,7 @@ const en: Record<TranslationKey, string> = {
   "admin.deleteCompany": "Delete company",
   "admin.actionsFor": "Actions for {name}",
   "admin.active": "Active",
+  "admin.premiumProject": "Premium project",
   "admin.createdAt": "Created",
   "admin.independentSnippets": "Independent snippets",
   "admin.independentSnippetsDescription":
@@ -447,7 +449,7 @@ const en: Record<TranslationKey, string> = {
   "snippet.selectedImageAlt": "Image selected for the launcher",
   "snippet.changeImage": "Change image",
   "snippet.uploadImage": "Upload image",
-  "snippet.imageHelp": "Transparent PNG or WebP, 1:1 ratio, up to 2 MB.",
+  "snippet.imageHelp": "Transparent PNG, WebP, or SVG, 1:1 ratio, up to 2 MB.",
   "snippet.primaryColor": "Primary color",
   "snippet.theme": "Theme",
   "snippet.themeLight": "Light",

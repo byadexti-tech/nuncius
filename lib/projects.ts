@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { Project, ProjectInput } from "@/lib/types";
 
 const PROJECT_COLUMNS =
-  "id,organization_id,name,webhook_url,created_at,updated_at";
+  "id,organization_id,name,webhook_url,is_premium,created_at,updated_at";
 
 export async function listProjects(organizationId: string): Promise<Project[]> {
   const { data, error } = await getSupabaseAdmin()

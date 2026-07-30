@@ -1,8 +1,11 @@
+import type { IconName } from "lucide-react/dynamic";
+
 export type Project = {
   id: string;
   organization_id: string;
   name: string;
   webhook_url: string;
+  is_premium: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -47,7 +50,7 @@ export const SNIPPET_ICONS = [
   "headphones",
   "bot",
   "circle-help",
-] as const;
+] as const satisfies readonly IconName[];
 
 export const SNIPPET_THEMES = ["light", "dark", "system", "attribute"] as const;
 
@@ -70,13 +73,21 @@ export const SNIPPET_POSITIONS = [
 
 export const SNIPPET_LAUNCHER_TYPES = ["icon", "image"] as const;
 export const SNIPPET_ORIGIN_POLICIES = ["allow_all", "allowlist"] as const;
+export const SNIPPET_ACTIVATION_MODES = [
+  "free_text",
+  "predefined_questions",
+] as const;
+export const SNIPPET_AUTH_MODES = ["manual", "automatic"] as const;
 
-export type SnippetIcon = (typeof SNIPPET_ICONS)[number];
+export type SnippetIcon = IconName;
 export type SnippetTheme = (typeof SNIPPET_THEMES)[number];
 export type SnippetFont = string;
 export type SnippetPosition = (typeof SNIPPET_POSITIONS)[number];
 export type SnippetLauncherType = (typeof SNIPPET_LAUNCHER_TYPES)[number];
 export type SnippetOriginPolicy = (typeof SNIPPET_ORIGIN_POLICIES)[number];
+export type SnippetActivationMode =
+  (typeof SNIPPET_ACTIVATION_MODES)[number];
+export type SnippetAuthMode = (typeof SNIPPET_AUTH_MODES)[number];
 
 export type Snippet = {
   id: string;
@@ -96,10 +107,22 @@ export type Snippet = {
   light_primary_text_color: string;
   dark_primary_color: string;
   dark_primary_text_color: string;
+  hide_powered_by: boolean;
+  header_title: string;
+  show_online_status: boolean;
   font_family: SnippetFont;
   position: SnippetPosition;
   auto_start_enabled: boolean;
   auto_start_message: string;
+  activation_mode: SnippetActivationMode;
+  activation_prompt: string;
+  activation_questions: string[];
+  show_input_with_predefined_questions: boolean;
+  loading_messages: string[];
+  auth_enabled: boolean;
+  auth_mode: SnippetAuthMode;
+  auth_title: string;
+  auth_description: string;
   is_active: boolean;
   origin_policy: SnippetOriginPolicy;
   allowed_origins: string[];
@@ -123,10 +146,22 @@ export type SnippetInput = {
   lightPrimaryTextColor: string;
   darkPrimaryColor: string;
   darkPrimaryTextColor: string;
+  hidePoweredBy: boolean;
+  headerTitle: string;
+  showOnlineStatus: boolean;
   fontFamily: SnippetFont;
   position: SnippetPosition;
   autoStartEnabled: boolean;
   autoStartMessage: string;
+  activationMode: SnippetActivationMode;
+  activationPrompt: string;
+  activationQuestions: string[];
+  showInputWithPredefinedQuestions: boolean;
+  loadingMessages: string[];
+  authEnabled: boolean;
+  authMode: SnippetAuthMode;
+  authTitle: string;
+  authDescription: string;
   isActive: boolean;
   originPolicy: SnippetOriginPolicy;
   allowedOrigins: string[];
@@ -148,7 +183,19 @@ export type PublicSnippetConfig = {
   lightPrimaryTextColor: string;
   darkPrimaryColor: string;
   darkPrimaryTextColor: string;
+  hidePoweredBy: boolean;
+  headerTitle: string;
+  showOnlineStatus: boolean;
   fontFamily: SnippetFont;
   position: SnippetPosition;
   autoStartEnabled: boolean;
+  activationMode: SnippetActivationMode;
+  activationPrompt: string;
+  activationQuestions: string[];
+  showInputWithPredefinedQuestions: boolean;
+  loadingMessages: string[];
+  authEnabled: boolean;
+  authMode: SnippetAuthMode;
+  authTitle: string;
+  authDescription: string;
 };

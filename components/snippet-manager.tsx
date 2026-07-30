@@ -13,7 +13,9 @@ import {
   ExternalLink,
   Headphones,
   ImageIcon,
+  LayoutGrid,
   LoaderCircle,
+  LockKeyhole,
   MessageCircle,
   MessagesSquare,
   Plus,
@@ -21,6 +23,7 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import {
   FormEvent,
@@ -28,7 +31,12 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
+import {
+  LucideCatalogIcon,
+  LucideIconPicker,
+} from "@/components/lucide-icon-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,18 +62,47 @@ const ICONS = {
   "circle-help": CircleHelp,
 };
 
+function LauncherIcon({
+  name,
+  className,
+}: {
+  name: SnippetIcon;
+  className?: string;
+}) {
+  const StaticIcon = ICONS[name as keyof typeof ICONS];
+  return StaticIcon ? (
+    <StaticIcon className={className} />
+  ) : (
+    <LucideCatalogIcon name={name} className={className} />
+  );
+}
+
 const TABS = [
   ["overview", "Visão geral"],
   ["appearance", "Aparência"],
   ["behavior", "Comportamento"],
   ["integrations", "Integrações"],
+  ["authentication", "Autenticação"],
   ["security", "Segurança"],
   ["installation", "Instalação"],
 ] as const;
 
 type TabSlug = (typeof TABS)[number][0];
 type SaveStatus = "idle" | "saving" | "saved" | "error";
-type AppearanceSection = "launcher" | "position" | "typography" | "colors";
+type AppearanceSection =
+  | "launcher"
+  | "position"
+  | "typography"
+  | "colors"
+  | "header"
+  | "branding";
+
+const DEFAULT_LOADING_MESSAGES = [
+  "Pesquisando...",
+  "Analisando...",
+  "Pensando...",
+  "Escolhendo a melhor resposta...",
+];
 
 const DEFAULT_INPUT: SnippetInput = {
   name: "Novo snippet",
@@ -83,16 +120,28 @@ const DEFAULT_INPUT: SnippetInput = {
   lightPrimaryTextColor: "#FFFFFF",
   darkPrimaryColor: "#6D46E8",
   darkPrimaryTextColor: "#FFFFFF",
+  hidePoweredBy: false,
+  headerTitle: "Como podemos ajudar?",
+  showOnlineStatus: true,
   fontFamily: "Inter",
   position: "bottom-right",
   autoStartEnabled: false,
   autoStartMessage: "Olá",
+  activationMode: "free_text",
+  activationPrompt: "Escolha uma pergunta para começar",
+  activationQuestions: [],
+  showInputWithPredefinedQuestions: true,
+  loadingMessages: DEFAULT_LOADING_MESSAGES,
+  authEnabled: false,
+  authMode: "manual",
+  authTitle: "Acesse sua conta",
+  authDescription: "Entre para iniciar o atendimento.",
   isActive: false,
   originPolicy: "allowlist",
   allowedOrigins: [],
 };
 
-const ICON_LABELS: Record<SnippetIcon, string> = {
+const ICON_LABELS: Record<(typeof SNIPPET_ICONS)[number], string> = {
   "message-circle": "Mensagem",
   "messages-square": "Conversas",
   headphones: "Atendimento",
@@ -125,6 +174,18 @@ function isTabSlug(value: string | null): value is TabSlug {
   return TABS.some(([slug]) => slug === value);
 }
 
+function subscribeToOrigin() {
+  return () => {};
+}
+
+function getClientOrigin() {
+  return window.location.origin;
+}
+
+function getServerOrigin() {
+  return "";
+}
+
 function toInput(snippet: Snippet): SnippetInput {
   return {
     name: snippet.name,
@@ -142,10 +203,23 @@ function toInput(snippet: Snippet): SnippetInput {
     lightPrimaryTextColor: snippet.light_primary_text_color,
     darkPrimaryColor: snippet.dark_primary_color,
     darkPrimaryTextColor: snippet.dark_primary_text_color,
+    hidePoweredBy: snippet.hide_powered_by,
+    headerTitle: snippet.header_title,
+    showOnlineStatus: snippet.show_online_status,
     fontFamily: snippet.font_family,
     position: snippet.position,
     autoStartEnabled: snippet.auto_start_enabled,
     autoStartMessage: snippet.auto_start_message,
+    activationMode: snippet.activation_mode,
+    activationPrompt: snippet.activation_prompt,
+    activationQuestions: snippet.activation_questions,
+    showInputWithPredefinedQuestions:
+      snippet.show_input_with_predefined_questions,
+    loadingMessages: snippet.loading_messages,
+    authEnabled: snippet.auth_enabled,
+    authMode: snippet.auth_mode,
+    authTitle: snippet.auth_title,
+    authDescription: snippet.auth_description,
     isActive: snippet.is_active,
     originPolicy: snippet.origin_policy,
     allowedOrigins: snippet.allowed_origins,
@@ -173,16 +247,108 @@ async function requestJson<T>(
 const MAX_IMAGE_FILE_SIZE = 2 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION = 4096;
 const OUTPUT_IMAGE_SIZE = 256;
+const LAUNCHER_IMAGE_TYPES = ["image/png", "image/webp", "image/svg+xml"];
+
+function prepareSvgSource(source: string): string {
+  const documentNode = new DOMParser().parseFromString(
+    source,
+    "image/svg+xml",
+  );
+  const svg = documentNode.documentElement;
+
+  if (
+    svg.localName !== "svg" ||
+    documentNode.querySelector("parsererror") ||
+    documentNode.querySelector(
+      "script, foreignObject, iframe, object, embed, audio, video",
+    )
+  ) {
+    throw new Error("O arquivo SVG é inválido ou contém conteúdo não permitido.");
+  }
+
+  for (const element of documentNode.querySelectorAll("*")) {
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim();
+      const hasExternalCssReference =
+        name === "style" &&
+        /(?:url\s*\(|@import|expression\s*\()/i.test(value);
+
+      if (
+        name.startsWith("on") ||
+        hasExternalCssReference ||
+        ((name === "href" || name === "xlink:href") &&
+          value !== "" &&
+          !value.startsWith("#") &&
+          !/^data:image\/(?:png|webp);base64,/i.test(value))
+      ) {
+        throw new Error(
+          "O arquivo SVG contém scripts ou referências externas não permitidas.",
+        );
+      }
+    }
+  }
+  for (const style of documentNode.querySelectorAll("style")) {
+    if (/(?:url\s*\(|@import|expression\s*\()/i.test(style.textContent ?? "")) {
+      throw new Error(
+        "O arquivo SVG contém estilos com referências externas não permitidas.",
+      );
+    }
+  }
+
+  const viewBox = (svg.getAttribute("viewBox") ?? "")
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
+  let width = viewBox[2];
+  let height = viewBox[3];
+
+  if (
+    viewBox.length !== 4 ||
+    viewBox.some((value) => !Number.isFinite(value)) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    width = Number.parseFloat(svg.getAttribute("width") ?? "");
+    height = Number.parseFloat(svg.getAttribute("height") ?? "");
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      throw new Error("O SVG precisa ter um viewBox ou dimensões válidas.");
+    }
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  }
+
+  if (Math.abs(width - height) > Number.EPSILON * Math.max(width, height)) {
+    throw new Error("Use uma imagem quadrada.");
+  }
+
+  svg.setAttribute("width", String(OUTPUT_IMAGE_SIZE));
+  svg.setAttribute("height", String(OUTPUT_IMAGE_SIZE));
+
+  return new XMLSerializer().serializeToString(documentNode);
+}
 
 async function prepareLauncherImage(file: File): Promise<string> {
-  if (!["image/png", "image/webp"].includes(file.type)) {
-    throw new Error("Envie uma imagem PNG ou WebP.");
+  const isSvg =
+    file.type === "image/svg+xml" ||
+    (file.type === "" && file.name.toLowerCase().endsWith(".svg"));
+  if (!LAUNCHER_IMAGE_TYPES.includes(file.type) && !isSvg) {
+    throw new Error("Envie uma imagem PNG, WebP ou SVG.");
   }
   if (file.size > MAX_IMAGE_FILE_SIZE) {
     throw new Error("A imagem deve ter no máximo 2 MB.");
   }
 
-  const objectUrl = URL.createObjectURL(file);
+  const imageSource = isSvg
+    ? new Blob([prepareSvgSource(await file.text())], {
+        type: "image/svg+xml",
+      })
+    : file;
+  const objectUrl = URL.createObjectURL(imageSource);
   try {
     const image = document.createElement("img");
     await new Promise<void>((resolve, reject) => {
@@ -421,8 +587,115 @@ function FontPicker({
   );
 }
 
-function SnippetPreview({ form }: { form: SnippetInput }) {
-  const Icon = ICONS[form.launcherIcon];
+const PREVIEW_COPY: Record<
+  TabSlug,
+  { eyebrow: string; description: string }
+> = {
+  overview: {
+    eyebrow: "Visão do visitante",
+    description: "Estado atual do widget no site.",
+  },
+  appearance: {
+    eyebrow: "Aparência em tempo real",
+    description: "Cores, posição, ícone e tipografia acompanham suas escolhas.",
+  },
+  behavior: {
+    eyebrow: "Início da conversa",
+    description: "Prévia da experiência definida nesta aba.",
+  },
+  integrations: {
+    eyebrow: "Resposta do assistente",
+    description: "Estado da conexão usada para enviar mensagens.",
+  },
+  authentication: {
+    eyebrow: "Acesso do visitante",
+    description: "Prévia da etapa de autenticação configurada.",
+  },
+  security: {
+    eyebrow: "Disponibilidade",
+    description: "Estado do widget conforme a política de segurança.",
+  },
+  installation: {
+    eyebrow: "Widget instalado",
+    description: "Resultado que aparece depois da incorporação no site.",
+  },
+};
+
+function SnippetPreview({
+  form,
+  activeTab,
+  webhookUrl,
+  selected,
+  isOpen,
+  onOpenChange,
+}: {
+  form: SnippetInput;
+  activeTab: TabSlug;
+  webhookUrl: string;
+  selected: Snippet | null;
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+}) {
+  if (selected) {
+    const previewCopy = PREVIEW_COPY[activeTab];
+    const encodedConfig = encodeURIComponent(JSON.stringify(form));
+    const srcDoc = `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #f1f5f9;
+      }
+    </style>
+  </head>
+  <body>
+    <script
+      src="/widget.js"
+      data-snippet-id="${selected.id}"
+      data-preview="true"
+      data-preview-open="true"
+      data-preview-tab="${activeTab}"
+      data-preview-config="${encodedConfig}"
+    ></script>
+  </body>
+</html>`;
+
+    return (
+      <Panel className="flex h-full flex-col overflow-hidden">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-700">
+              {previewCopy.eyebrow}
+            </p>
+            <h2 className="mt-1 text-base font-semibold text-slate-950">
+              Widget real
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              {previewCopy.description}
+            </p>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            widget.js
+          </span>
+        </div>
+        <iframe
+          key={`${selected.id}-${activeTab}-${encodedConfig}`}
+          title="Widget Nuncius real"
+          className="min-h-0 w-full flex-1 rounded-2xl border border-slate-200 bg-slate-100"
+          sandbox="allow-forms allow-same-origin allow-scripts"
+          srcDoc={srcDoc}
+        />
+      </Panel>
+    );
+  }
+
   const image =
     form.launcherType === "image" && form.launcherImage
       ? form.launcherImage
@@ -445,87 +718,312 @@ function SnippetPreview({ form }: { form: SnippetInput }) {
   const buttonTextColor = customAppearance
     ? dark ? form.darkPrimaryTextColor : form.lightPrimaryTextColor
     : "#FFFFFF";
-  const horizontal = form.position.endsWith("right") ? "right-5" : "left-5";
-  const vertical = form.position.startsWith("top") ? "top-5" : "bottom-5";
+  const previewCopy = PREVIEW_COPY[activeTab];
+  const questions = form.activationQuestions.filter(Boolean).slice(0, 3);
+  const widgetAvailable =
+    form.isActive ||
+    activeTab === "appearance" ||
+    activeTab === "behavior" ||
+    activeTab === "authentication";
+
+  function renderBody() {
+    if (activeTab === "security" && !form.isActive) {
+      return (
+        <div className="grid h-full place-items-center px-7 text-center">
+          <div>
+            <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-slate-100 text-slate-500">
+              <ShieldCheck className="size-5" />
+            </div>
+            <p className="mt-4 text-sm font-semibold">Widget inativo</p>
+            <p className="mt-1 text-xs leading-5 opacity-70">
+              Ative o snippet para disponibilizá-lo aos visitantes.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeTab === "authentication" && form.authEnabled) {
+      if (form.authMode === "automatic") {
+        return (
+          <div className="grid h-full place-items-center px-7 text-center">
+            <div>
+              <LoaderCircle
+                className="mx-auto size-7 animate-spin"
+                style={{ color: buttonColor }}
+              />
+              <p className="mt-4 text-sm font-semibold">Validando acesso</p>
+              <p className="mt-1 text-xs leading-5 opacity-70">
+                O token do site será confirmado antes de abrir a conversa.
+              </p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="h-full overflow-y-auto px-5 py-6 text-center">
+          <div
+            className="mx-auto grid size-11 place-items-center rounded-2xl"
+            style={{ backgroundColor: `${buttonColor}1f`, color: buttonColor }}
+          >
+            <LockKeyhole className="size-5" />
+          </div>
+          <p className="mt-3 text-base font-bold">
+            {form.authTitle || "Acesse sua conta"}
+          </p>
+          <p className="mt-1 text-xs leading-5 opacity-70">
+            {form.authDescription || "Entre para iniciar o atendimento."}
+          </p>
+          <div className="mt-4 space-y-2 text-left">
+            <label className="block text-[11px] font-semibold">
+              Login
+              <input
+                className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-transparent px-3 text-xs outline-none"
+                placeholder="seu@email.com"
+                readOnly
+              />
+            </label>
+            <label className="block text-[11px] font-semibold">
+              Senha
+              <input
+                type="password"
+                className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-transparent px-3 text-xs outline-none"
+                value="12345678"
+                readOnly
+              />
+            </label>
+            <button
+              type="button"
+              className="h-9 w-full rounded-xl text-xs font-bold"
+              style={{ backgroundColor: buttonColor, color: buttonTextColor }}
+            >
+              Entrar
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeTab === "behavior" && form.activationMode === "predefined_questions") {
+      return (
+        <div className="flex h-full flex-col justify-end p-4">
+          <p className="mb-3 text-center text-xs font-medium opacity-70">
+            {form.activationPrompt || "Escolha uma pergunta para começar"}
+          </p>
+          <div className="space-y-2">
+            {(questions.length
+              ? questions
+              : ["Quero conhecer o produto", "Preciso de ajuda"]).map(
+              (question) => (
+                <button
+                  key={question}
+                  type="button"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-medium text-slate-700 shadow-sm"
+                >
+                  {question}
+                </button>
+              ),
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (activeTab === "integrations") {
+      return (
+        <div className="flex h-full flex-col justify-end p-4">
+          <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-slate-100 px-3 py-2.5 text-xs leading-5 text-slate-700">
+            Olá! Como posso ajudar você hoje?
+          </div>
+          <div
+            className={cn(
+              "mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-medium",
+              webhookUrl.trim()
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-amber-200 bg-amber-50 text-amber-800",
+            )}
+          >
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                webhookUrl.trim() ? "bg-emerald-500" : "bg-amber-500",
+              )}
+            />
+            {webhookUrl.trim()
+              ? "Webhook pronto para responder"
+              : "Webhook ainda não configurado"}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex h-full flex-col justify-end p-4">
+        {activeTab === "installation" ? (
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700">
+            <CheckCircle2 className="size-3.5" />
+            {selected ? "Código pronto para publicação" : "Salve para gerar o código"}
+          </div>
+        ) : null}
+        {activeTab === "security" ? (
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700">
+            <ShieldCheck className="size-3.5" />
+            {form.originPolicy === "allow_all"
+              ? "Disponível em qualquer origem"
+              : `${form.allowedOrigins.filter(Boolean).length} origem(ns) autorizada(s)`}
+          </div>
+        ) : null}
+        <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-slate-100 px-3 py-2.5 text-xs leading-5 text-slate-700">
+          {activeTab === "behavior" && form.autoStartEnabled
+            ? form.autoStartMessage || "Olá"
+            : "Olá! Como podemos ajudar?"}
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+          <span className="flex-1 text-[11px] opacity-55">
+            Digite sua mensagem...
+          </span>
+          <span
+            className="grid size-7 place-items-center rounded-lg"
+            style={{ backgroundColor: buttonColor, color: buttonTextColor }}
+          >
+            <MessageCircle className="size-3.5" />
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={cn(
-        "relative h-[420px] overflow-hidden rounded-2xl border",
-        dark
-          ? "border-slate-700 bg-[radial-gradient(circle_at_top,#253047,#0f172a_70%)]"
-          : "border-slate-200 bg-[radial-gradient(circle_at_top,#ffffff,#eef2ff_70%)]",
-      )}
-      style={{ fontFamily: customAppearance ? form.fontFamily : undefined }}
-    >
-      <div className="absolute left-5 right-5 top-5 flex items-center gap-2">
-        <span className="size-2 rounded-full bg-red-400" />
-        <span className="size-2 rounded-full bg-amber-400" />
-        <span className="size-2 rounded-full bg-emerald-400" />
-        <span
-          className={cn(
-            "ml-2 h-2.5 w-32 rounded-full",
-            dark ? "bg-slate-700" : "bg-slate-200",
-          )}
-        />
+    <Panel className="flex h-full flex-col overflow-hidden">
+      <div className="mb-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-700">
+              {previewCopy.eyebrow}
+            </p>
+            <h2 className="mt-1 text-base font-semibold text-slate-950">
+              Widget em tempo real
+            </h2>
+          </div>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+              widgetAvailable
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-slate-100 text-slate-600",
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                widgetAvailable ? "bg-emerald-500" : "bg-slate-400",
+              )}
+            />
+            {widgetAvailable ? "Prévia ativa" : "Indisponível"}
+          </span>
+        </div>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          {previewCopy.description}
+        </p>
       </div>
+
       <div
         className={cn(
-          "absolute h-44 w-64 overflow-hidden rounded-2xl border shadow-2xl",
-          horizontal,
-          form.position.startsWith("top") ? "top-24" : "bottom-24",
+          "relative min-h-[450px] flex-1 overflow-hidden rounded-2xl border p-4",
           dark
-            ? "border-slate-700 bg-slate-900"
-            : "border-slate-200 bg-white",
+            ? "border-slate-700 bg-slate-950"
+            : "border-slate-200 bg-slate-100",
         )}
+        style={{ fontFamily: customAppearance ? form.fontFamily : undefined }}
       >
-        <div
-          className="flex h-12 items-center px-4 text-xs font-semibold text-white"
+        <div className="flex items-center gap-2">
+          <span className="size-2 rounded-full bg-red-400" />
+          <span className="size-2 rounded-full bg-amber-400" />
+          <span className="size-2 rounded-full bg-emerald-400" />
+          <span
+            className={cn(
+              "ml-2 h-2 w-24 rounded-full",
+              dark ? "bg-slate-700" : "bg-white",
+            )}
+          />
+        </div>
+
+        {isOpen ? (
+          <div
+            className={cn(
+              "absolute inset-x-4 z-10 flex flex-col overflow-hidden rounded-[22px] border shadow-2xl",
+              form.position.startsWith("top")
+                ? "bottom-4 top-28"
+                : "bottom-20 top-12",
+              dark
+                ? "border-slate-700 bg-slate-900 text-slate-100"
+                : "border-slate-200 bg-white text-slate-900",
+            )}
+            style={{ backgroundColor: surface, color: textColor }}
+          >
+            <div
+              className="flex h-14 shrink-0 items-center px-4"
+              style={{ backgroundColor: buttonColor, color: buttonTextColor }}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-semibold">
+                  {form.headerTitle}
+                </div>
+                {form.showOnlineStatus ? (
+                  <div className="mt-0.5 flex items-center gap-1 text-[9px] opacity-80">
+                    <span className="size-1.5 rounded-full bg-emerald-300" />
+                    Online agora
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className="grid size-8 place-items-center rounded-lg hover:bg-white/10"
+                aria-label="Fechar prévia do widget"
+                onClick={() => onOpenChange(false)}
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">{renderBody()}</div>
+            {!form.hidePoweredBy ? (
+              <div className="shrink-0 pb-2 text-center text-[9px] opacity-50">
+                Powered by Nuncius
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          className={cn(
+            "absolute z-20 grid size-14 place-items-center rounded-2xl shadow-xl transition-transform hover:-translate-y-0.5",
+            form.position.endsWith("right") ? "right-4" : "left-4",
+            form.position.startsWith("top") ? "top-12" : "bottom-4",
+          )}
           style={{ backgroundColor: buttonColor, color: buttonTextColor }}
+          aria-label={isOpen ? "Fechar widget" : "Abrir widget"}
+          aria-expanded={isOpen}
+          onClick={() => onOpenChange(!isOpen)}
         >
-          Como podemos ajudar?
-        </div>
-        <div className="space-y-3 p-4" style={{ backgroundColor: surface, color: textColor }}>
-          <div
-            className={cn(
-              "h-3 w-3/4 rounded-full",
-              dark ? "bg-slate-700" : "bg-slate-200",
-            )}
-          />
-          <div
-            className={cn(
-              "h-3 w-1/2 rounded-full",
-              dark ? "bg-slate-700" : "bg-slate-200",
-            )}
-          />
-          <div
-            className="ml-auto h-8 w-28 rounded-xl opacity-90"
-            style={{ backgroundColor: buttonColor }}
-          />
-        </div>
+          {isOpen ? (
+            <X className="size-5" />
+          ) : image ? (
+            <Image
+              src={image}
+              alt=""
+              width={40}
+              height={40}
+              unoptimized
+              className="size-10 object-contain"
+            />
+          ) : (
+            <LauncherIcon name={form.launcherIcon} className="size-6" />
+          )}
+        </button>
       </div>
-      <div
-        className={cn(
-          "absolute grid size-14 place-items-center rounded-2xl text-white shadow-xl",
-          horizontal,
-          vertical,
-        )}
-        style={{ backgroundColor: buttonColor, color: buttonTextColor }}
-      >
-        {image ? (
-          <Image
-            src={image}
-            alt=""
-            width={40}
-            height={40}
-            unoptimized
-            className="size-10 object-contain"
-          />
-        ) : (
-          <Icon className="size-6" />
-        )}
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -565,8 +1063,10 @@ export function SnippetManager({
   const [processingImage, setProcessingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [origin] = useState(() =>
-    typeof window === "undefined" ? "" : window.location.origin,
+  const origin = useSyncExternalStore(
+    subscribeToOrigin,
+    getClientOrigin,
+    getServerOrigin,
   );
   const [webhookUrl, setWebhookUrl] = useState(project.webhook_url);
   const [integrationMessage, setIntegrationMessage] = useState<string | null>(
@@ -574,6 +1074,8 @@ export function SnippetManager({
   );
   const [openAppearanceSection, setOpenAppearanceSection] =
     useState<AppearanceSection>("launcher");
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(true);
 
   const selected =
     snippets.find((snippet) => snippet.id === selectedId) ?? null;
@@ -613,44 +1115,6 @@ export function SnippetManager({
     setError(null);
   }
 
-  function selectSnippet(snippet: Snippet) {
-    if (
-      dirty &&
-      !window.confirm(
-        "Há alterações não salvas. Deseja descartá-las e trocar de snippet?",
-      )
-    ) {
-      return;
-    }
-    setSelectedId(snippet.id);
-    setForm(toInput(snippet));
-    setSaveStatus("idle");
-    setError(null);
-    setCopied(false);
-    updateUrl(snippet.id, activeTab);
-  }
-
-  function startCreating() {
-    if (
-      dirty &&
-      !window.confirm(
-        "Há alterações não salvas. Deseja descartá-las e criar outro snippet?",
-      )
-    ) {
-      return;
-    }
-    const nextForm = {
-      ...DEFAULT_INPUT,
-      name: `Novo snippet ${snippets.length + 1}`,
-    };
-    setSelectedId(null);
-    setForm(nextForm);
-    setSaveStatus("idle");
-    setError(null);
-    setCopied(false);
-    updateUrl(null, "overview");
-  }
-
   async function selectLauncherImage(file: File | undefined) {
     if (!file || !canEdit) return;
     setProcessingImage(true);
@@ -688,7 +1152,12 @@ export function SnippetManager({
         {
           method: selected ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify({
+            ...form,
+            allowedOrigins: form.allowedOrigins
+              .map((origin) => origin.trim())
+              .filter(Boolean),
+          }),
         },
       );
 
@@ -782,7 +1251,7 @@ export function SnippetManager({
   }
 
   const embedCode = selected
-    ? `<script src="${origin || "https://seu-dominio.com"}/widget.js" data-snippet-id="${selected.id}"${form.themeMode === "attribute" ? ' data-theme="light"' : ""} defer></script>`
+    ? `<script src="${origin || "https://seu-dominio.com"}/widget.js" data-snippet-id="${selected.id}"${form.themeMode === "attribute" ? ' data-theme="light"' : ""}${form.authEnabled && form.authMode === "automatic" ? ' data-auth-token="TOKEN_TEMPORARIO_DO_USUARIO"' : ""} defer></script>`
     : "";
 
   async function copyCode() {
@@ -834,7 +1303,7 @@ export function SnippetManager({
 
   function renderOverview() {
     return (
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.6fr)]">
+      <div className="space-y-6">
         <Panel>
           <SectionHeading
             title="Informações do snippet"
@@ -885,7 +1354,7 @@ export function SnippetManager({
           </div>
         </Panel>
 
-        <div className="space-y-6">
+        <div className="grid gap-6 lg:grid-cols-2">
           <Panel>
             <SectionHeading
               title="Estado atual"
@@ -963,8 +1432,7 @@ export function SnippetManager({
 
   function renderAppearance() {
     return (
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
           <AppearanceAccordionItem
             title="Tipografia"
             description="Defina a fonte antes das demais escolhas de aparência."
@@ -987,7 +1455,14 @@ export function SnippetManager({
             </label>
             {form.appearanceCustomizationsEnabled ? (
               <div className="mt-5">
-                <FontPicker value={form.fontFamily} disabled={!canEdit} onChange={(fontFamily) => setForm((current) => ({ ...current, fontFamily }))} />
+                <FontPicker
+                  value={form.fontFamily}
+                  disabled={!canEdit}
+                  customFontsEnabled={project.is_premium}
+                  onChange={(fontFamily) =>
+                    setForm((current) => ({ ...current, fontFamily }))
+                  }
+                />
               </div>
             ) : null}
           </AppearanceAccordionItem>
@@ -1028,7 +1503,7 @@ export function SnippetManager({
             {form.launcherType === "icon" ? (
               <div className="mt-5">
                 <Label>Ícone</Label>
-                <div className="mt-2 grid grid-cols-5 gap-2">
+                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
                   {SNIPPET_ICONS.map((icon) => {
                     const Icon = ICONS[icon];
                     return (
@@ -1055,6 +1530,31 @@ export function SnippetManager({
                       </button>
                     );
                   })}
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    className={cn(
+                      "flex h-14 flex-col items-center justify-center gap-1 rounded-xl border border-dashed bg-white transition-colors disabled:opacity-60",
+                      !(SNIPPET_ICONS as readonly string[]).includes(
+                        form.launcherIcon,
+                      )
+                        ? "border-violet-500 bg-violet-50 text-violet-700 ring-2 ring-violet-100"
+                        : "border-slate-300 text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700",
+                    )}
+                    onClick={() => setIconPickerOpen(true)}
+                  >
+                    {(SNIPPET_ICONS as readonly string[]).includes(
+                      form.launcherIcon,
+                    ) ? (
+                      <LayoutGrid className="size-5" />
+                    ) : (
+                      <LauncherIcon
+                        name={form.launcherIcon}
+                        className="size-5"
+                      />
+                    )}
+                    <span className="text-[10px] font-medium">Ver mais</span>
+                  </button>
                 </div>
               </div>
             ) : (
@@ -1090,7 +1590,7 @@ export function SnippetManager({
                       <input
                         type="file"
                         className="sr-only"
-                        accept="image/png,image/webp"
+                        accept="image/png,image/webp,image/svg+xml,.svg"
                         disabled={!canEdit || processingImage}
                         onChange={(event) => {
                           void selectLauncherImage(event.target.files?.[0]);
@@ -1099,7 +1599,7 @@ export function SnippetManager({
                       />
                     </label>
                     <p className="mt-2 text-xs leading-5 text-slate-500">
-                      PNG ou WebP transparente e quadrado, até 2 MB.
+                      PNG, WebP ou SVG transparente e quadrado, até 2 MB.
                     </p>
                   </div>
                 </div>
@@ -1199,38 +1699,7 @@ export function SnippetManager({
             onToggle={() => setOpenAppearanceSection("position")}
             className="order-2"
           >
-            <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
-              <button
-                type="button"
-                aria-pressed="true"
-                className="flex h-10 items-center justify-center rounded-lg bg-white text-sm font-medium text-violet-700 shadow-sm"
-              >
-                Fixo
-              </button>
-              <span
-                className="group relative inline-flex"
-                tabIndex={0}
-                aria-describedby="floating-position-premium-tooltip"
-              >
-                <button
-                  type="button"
-                  disabled
-                  className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg text-sm font-medium text-slate-400"
-                >
-                  Flutuante
-                  <Crown className="size-3.5 text-amber-500" aria-hidden="true" />
-                </button>
-                <span
-                  id="floating-position-premium-tooltip"
-                  role="tooltip"
-                  className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-56 -translate-x-1/2 translate-y-1 rounded-lg bg-slate-950 px-3 py-2 text-center text-xs leading-5 text-white opacity-0 shadow-xl transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
-                >
-                  A posição flutuante está disponível nos planos Premium.
-                </span>
-              </span>
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {SNIPPET_POSITIONS.map((position) => {
                 const label = POSITION_LABELS[position];
 
@@ -1270,24 +1739,149 @@ export function SnippetManager({
               })}
             </div>
           </AppearanceAccordionItem>
-        </div>
 
-        <div className="xl:sticky xl:top-24">
-          <Panel>
-            <SectionHeading
-              title="Pré-visualização"
-              description="As alterações aparecem aqui antes de serem salvas."
-            />
-            <SnippetPreview form={form} />
-          </Panel>
-        </div>
+          <AppearanceAccordionItem
+            title="Cabeçalho"
+            description="Personalize o título exibido no topo do chat."
+            isOpen={openAppearanceSection === "header"}
+            onToggle={() => setOpenAppearanceSection("header")}
+            className="order-5"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="snippet-header-title">Título</Label>
+              <Input
+                id="snippet-header-title"
+                value={form.headerTitle}
+                minLength={2}
+                maxLength={80}
+                disabled={!canEdit}
+                placeholder="Como podemos ajudar?"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    headerTitle: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-slate-500">
+                Este texto aparece para os visitantes no cabeçalho do widget.
+              </p>
+            </div>
+            <label
+              className={cn(
+                "mt-5 flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4",
+                canEdit ? "cursor-pointer" : "cursor-not-allowed opacity-70",
+              )}
+            >
+              <span>
+                <span className="block text-sm font-medium text-slate-900">
+                  Mostrar status online
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-slate-500">
+                  Exibe o ponto verde e o texto “Online agora”.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={form.showOnlineStatus}
+                disabled={!canEdit}
+                className="size-4 shrink-0 accent-violet-600"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    showOnlineStatus: event.target.checked,
+                  }))
+                }
+              />
+            </label>
+          </AppearanceAccordionItem>
+
+          <AppearanceAccordionItem
+            title="Marca Nuncius"
+            description="Controle a assinatura exibida no rodapé do widget."
+            isOpen={openAppearanceSection === "branding"}
+            onToggle={() => setOpenAppearanceSection("branding")}
+            className="order-6"
+          >
+            <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+              <div className="flex items-start gap-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-700">
+                  <Crown className="size-4" />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold text-slate-900">
+                    Projeto Premium
+                  </span>
+                  <span className="mt-1 block text-sm leading-5 text-slate-600">
+                    Este projeto é Premium e pode remover a assinatura do widget.
+                  </span>
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant={form.hidePoweredBy ? "default" : "outline"}
+                className="mt-4 w-full"
+                aria-pressed={form.hidePoweredBy}
+                disabled={!canEdit || !project.is_premium}
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    hidePoweredBy: !current.hidePoweredBy,
+                  }))
+                }
+              >
+                <Check className={cn("size-4", !form.hidePoweredBy && "opacity-0")} />
+                {form.hidePoweredBy
+                  ? "Powered by Nuncius oculto"
+                  : "Ocultar Powered by Nuncius"}
+              </Button>
+            </div>
+          </AppearanceAccordionItem>
       </div>
     );
   }
 
   function renderBehavior() {
+    function updateActivationQuestion(index: number, value: string) {
+      setForm((current) => ({
+        ...current,
+        activationQuestions: current.activationQuestions.map(
+          (question, questionIndex) =>
+            questionIndex === index ? value : question,
+        ),
+      }));
+    }
+
+    function removeActivationQuestion(index: number) {
+      setForm((current) => ({
+        ...current,
+        activationQuestions: current.activationQuestions.filter(
+          (_, questionIndex) => questionIndex !== index,
+        ),
+      }));
+    }
+
+    function updateLoadingMessage(index: number, value: string) {
+      setForm((current) => ({
+        ...current,
+        loadingMessages: current.loadingMessages.map(
+          (message, messageIndex) =>
+            messageIndex === index ? value : message,
+        ),
+      }));
+    }
+
+    function removeLoadingMessage(index: number) {
+      setForm((current) => ({
+        ...current,
+        loadingMessages: current.loadingMessages.filter(
+          (_, messageIndex) => messageIndex !== index,
+        ),
+      }));
+    }
+
     return (
-      <Panel className="max-w-3xl">
+      <Panel>
         <SectionHeading
           title="Início da conversa"
           description="Defina se o n8n deve ser acionado automaticamente quando o visitante abrir o chat."
@@ -1336,13 +1930,240 @@ export function SnippetManager({
             diretamente para o visitante.
           </p>
         </div>
+
+        <fieldset className="mt-8">
+          <legend className="text-sm font-semibold text-slate-900">
+            Primeira interação do visitante
+          </legend>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            Escolha como o visitante poderá iniciar a conversa.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {[
+              {
+                value: "free_text" as const,
+                title: "Texto livre",
+                description:
+                  "Mantém o campo de mensagem disponível desde o início.",
+              },
+              {
+                value: "predefined_questions" as const,
+                title: "Perguntas pré-definidas",
+                description:
+                  "Exibe opções clicáveis para iniciar a conversa.",
+              },
+            ].map((option) => (
+              <label
+                key={option.value}
+                className={cn(
+                  "cursor-pointer rounded-xl border p-4 transition-colors",
+                  form.activationMode === option.value
+                    ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100"
+                    : "border-slate-200 hover:border-slate-300",
+                  !canEdit && "cursor-not-allowed opacity-70",
+                )}
+              >
+                <span className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    name="activation-mode"
+                    value={option.value}
+                    checked={form.activationMode === option.value}
+                    disabled={!canEdit}
+                    className="mt-1 size-4 accent-violet-600"
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        activationMode: option.value,
+                        activationQuestions:
+                          option.value === "predefined_questions" &&
+                          current.activationQuestions.length === 0
+                            ? [""]
+                            : current.activationQuestions,
+                      }))
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-900">
+                      {option.title}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500">
+                      {option.description}
+                    </span>
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {form.activationMode === "predefined_questions" ? (
+          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="space-y-2">
+              <Label htmlFor="activation-prompt">Texto de apresentação</Label>
+              <Input
+                id="activation-prompt"
+                value={form.activationPrompt}
+                minLength={1}
+                maxLength={200}
+                disabled={!canEdit}
+                placeholder="Escolha uma pergunta para começar"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    activationPrompt: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-center text-sm font-semibold text-slate-800">
+                {form.activationPrompt || "Texto de apresentação"}
+              </p>
+            </div>
+            <div className="mt-5 space-y-3">
+              {form.activationQuestions.map((question, index) => (
+                <div
+                  key={index}
+                  className="flex items-start gap-2"
+                >
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Label htmlFor={`activation-question-${index}`}>
+                      Pergunta {index + 1}
+                    </Label>
+                    <Input
+                      id={`activation-question-${index}`}
+                      value={question}
+                      maxLength={4000}
+                      disabled={!canEdit}
+                      placeholder="Ex.: Quais são os planos disponíveis?"
+                      onChange={(event) =>
+                        updateActivationQuestion(index, event.target.value)
+                      }
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="mt-6 shrink-0 text-slate-500 hover:text-red-600"
+                    aria-label={`Remover pergunta ${index + 1}`}
+                    disabled={!canEdit}
+                    onClick={() => removeActivationQuestion(index)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 w-full"
+              disabled={!canEdit}
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  activationQuestions: [...current.activationQuestions, ""],
+                }))
+              }
+            >
+              <Plus className="size-4" />
+              Adicionar pergunta
+            </Button>
+            <label
+              className={cn(
+                "mt-5 flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4",
+                canEdit ? "cursor-pointer" : "cursor-not-allowed opacity-70",
+              )}
+            >
+              <span>
+                <span className="block text-sm font-medium text-slate-900">
+                  Exibir campo de texto
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-slate-500">
+                  Permite que o visitante também escreva uma pergunta livre
+                  desde o início.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={form.showInputWithPredefinedQuestions}
+                disabled={!canEdit}
+                className="mt-0.5 size-4 shrink-0 accent-violet-600"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    showInputWithPredefinedQuestions: event.target.checked,
+                  }))
+                }
+              />
+            </label>
+          </div>
+        ) : null}
+
+        <div className="mt-8 border-t border-slate-200 pt-8">
+          <SectionHeading
+            title="Mensagens durante a espera"
+            description="Estas frases aparecem em sequência enquanto o assistente prepara a resposta."
+          />
+          <div className="space-y-3">
+            {form.loadingMessages.map((message, index) => (
+              <div key={index} className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Label htmlFor={`loading-message-${index}`}>
+                    Frase {index + 1}
+                  </Label>
+                  <Input
+                    id={`loading-message-${index}`}
+                    value={message}
+                    maxLength={80}
+                    disabled={!canEdit}
+                    placeholder="Ex.: Analisando..."
+                    onChange={(event) =>
+                      updateLoadingMessage(index, event.target.value)
+                    }
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="mt-6 shrink-0 text-slate-500 hover:text-red-600"
+                  aria-label={`Remover frase ${index + 1}`}
+                  disabled={!canEdit || form.loadingMessages.length === 1}
+                  onClick={() => removeLoadingMessage(index)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 w-full"
+            disabled={!canEdit || form.loadingMessages.length >= 10}
+            onClick={() =>
+              setForm((current) => ({
+                ...current,
+                loadingMessages: [...current.loadingMessages, ""],
+              }))
+            }
+          >
+            <Plus className="size-4" />
+            Adicionar frase
+          </Button>
+          <p className="mt-3 text-xs leading-5 text-slate-500">
+            Use de 1 a 10 frases. Cada uma pode ter até 80 caracteres.
+          </p>
+        </div>
       </Panel>
     );
   }
 
   function renderIntegrations() {
     return (
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="space-y-6">
         <Panel>
           <SectionHeading
             title="Webhook do n8n"
@@ -1422,7 +2243,7 @@ export function SnippetManager({
 
   function renderSecurity() {
     return (
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="space-y-6">
         <Panel>
           <SectionHeading
             title="Disponibilidade e origens"
@@ -1519,31 +2340,82 @@ export function SnippetManager({
           </fieldset>
 
           {form.originPolicy === "allowlist" ? (
-            <div className="mt-6 space-y-2">
+            <div className="mt-6 space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="allowed-origins">Origens autorizadas</Label>
+                <Label>Origens autorizadas</Label>
                 <span className="text-xs text-slate-400">
                   {form.allowedOrigins.length}/20
                 </span>
               </div>
-              <textarea
-                id="allowed-origins"
-                className="min-h-36 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 font-mono text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50"
-                disabled={!canEdit}
-                value={form.allowedOrigins.join("\n")}
-                placeholder={"https://www.exemplo.com\nhttps://app.exemplo.com"}
-                onChange={(event) =>
+              {form.allowedOrigins.length > 0 ? (
+                <div className="space-y-2">
+                  {form.allowedOrigins.map((origin, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-2"
+                    >
+                      <Input
+                        id={`allowed-origin-${index}`}
+                        type="url"
+                        className="font-mono"
+                        disabled={!canEdit}
+                        value={origin}
+                        placeholder="https://www.exemplo.com"
+                        aria-label={`Origem autorizada ${index + 1}`}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            allowedOrigins: current.allowedOrigins.map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? event.target.value
+                                  : item,
+                            ),
+                          }))
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="shrink-0 text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                        disabled={!canEdit}
+                        aria-label={`Remover origem ${index + 1}`}
+                        onClick={() =>
+                          setForm((current) => ({
+                            ...current,
+                            allowedOrigins: current.allowedOrigins.filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
+                          }))
+                        }
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
+                  Nenhuma origem cadastrada.
+                </p>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!canEdit || form.allowedOrigins.length >= 20}
+                onClick={() =>
                   setForm((current) => ({
                     ...current,
-                    allowedOrigins: event.target.value
-                      .split("\n")
-                      .map((item) => item.trim())
-                      .filter(Boolean),
+                    allowedOrigins: [...current.allowedOrigins, ""],
                   }))
                 }
-              />
+              >
+                <Plus className="size-4" />
+                Adicionar origem
+              </Button>
               <p className="text-xs leading-5 text-slate-500">
-                Uma origem por linha, no formato{" "}
+                Informe cada origem no formato{" "}
                 <code className="rounded bg-slate-100 px-1 py-0.5">
                   https://dominio.com
                 </code>
@@ -1595,9 +2467,198 @@ export function SnippetManager({
     );
   }
 
+  function renderAuthentication() {
+    return (
+      <div className="space-y-6">
+        <Panel>
+          <SectionHeading
+            title="Autenticação do visitante"
+            description="Defina se o chat deve validar o visitante no n8n antes de liberar a conversa."
+          />
+
+          <label
+            className={cn(
+              "flex items-start justify-between gap-5 rounded-xl border border-slate-200 p-4",
+              canEdit ? "cursor-pointer" : "cursor-not-allowed opacity-70",
+            )}
+          >
+            <span>
+              <span className="block text-sm font-semibold text-slate-900">
+                Exigir autenticação
+              </span>
+              <span className="mt-1 block text-sm leading-6 text-slate-500">
+                O widget permanece bloqueado até o webhook do n8n confirmar o
+                acesso.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="mt-1 size-5 shrink-0 rounded border-slate-300 accent-violet-600"
+              checked={form.authEnabled}
+              disabled={!canEdit}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  authEnabled: event.target.checked,
+                }))
+              }
+            />
+          </label>
+
+          {form.authEnabled ? (
+            <>
+              <fieldset className="mt-6">
+                <legend className="text-sm font-semibold text-slate-900">
+                  Método de autenticação
+                </legend>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {[
+                    {
+                      value: "manual" as const,
+                      title: "Login e senha",
+                      description:
+                        "Exibe um formulário dentro da janela do chat.",
+                    },
+                    {
+                      value: "automatic" as const,
+                      title: "Automático",
+                      description:
+                        "Valida um token fornecido pelo site sem interromper o visitante.",
+                    },
+                  ].map((option) => (
+                    <label
+                      key={option.value}
+                      className={cn(
+                        "cursor-pointer rounded-xl border p-4 transition-colors",
+                        form.authMode === option.value
+                          ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100"
+                          : "border-slate-200 hover:border-slate-300",
+                        !canEdit && "cursor-not-allowed opacity-70",
+                      )}
+                    >
+                      <span className="flex items-start gap-3">
+                        <input
+                          type="radio"
+                          name="auth-mode"
+                          value={option.value}
+                          checked={form.authMode === option.value}
+                          disabled={!canEdit}
+                          className="mt-1 size-4 accent-violet-600"
+                          onChange={() =>
+                            setForm((current) => ({
+                              ...current,
+                              authMode: option.value,
+                            }))
+                          }
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-900">
+                            {option.title}
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">
+                            {option.description}
+                          </span>
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="mt-6 grid gap-5">
+                <div className="space-y-2">
+                  <Label htmlFor="auth-title">Título da tela</Label>
+                  <Input
+                    id="auth-title"
+                    value={form.authTitle}
+                    minLength={2}
+                    maxLength={80}
+                    disabled={!canEdit}
+                    placeholder="Acesse sua conta"
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        authTitle: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="auth-description">Descrição</Label>
+                  <textarea
+                    id="auth-description"
+                    className="min-h-24 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50"
+                    value={form.authDescription}
+                    maxLength={240}
+                    disabled={!canEdit}
+                    placeholder="Entre para iniciar o atendimento."
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        authDescription: event.target.value,
+                      }))
+                    }
+                  />
+                  <p className="text-right text-xs text-slate-400">
+                    {form.authDescription.length}/240
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </Panel>
+
+        <div className="space-y-6">
+          <Panel>
+            <div className="grid size-10 place-items-center rounded-xl bg-violet-50 text-violet-600">
+              <LockKeyhole className="size-5" />
+            </div>
+            <h3 className="mt-4 font-semibold text-slate-950">
+              Contrato com o n8n
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              O mesmo webhook do projeto receberá o evento{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">
+                authenticate
+              </code>
+              .
+            </p>
+            <div className="mt-4 overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs leading-6 text-slate-300">
+              <span className="text-slate-500">
+                {"// resposta esperada"}
+              </span>
+              <br />
+              {`{`}
+              <br />
+              &nbsp;&nbsp;&quot;authenticated&quot;: true,
+              <br />
+              &nbsp;&nbsp;&quot;authToken&quot;: &quot;token-opaco&quot;
+              <br />
+              {`}`}
+            </div>
+          </Panel>
+
+          {form.authEnabled && form.authMode === "automatic" ? (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900">
+              <p className="text-sm font-semibold">Token automático</p>
+              <p className="mt-1 text-sm leading-6 text-blue-800">
+                Gere um token temporário no servidor do site e informe-o no
+                atributo{" "}
+                <code className="rounded bg-blue-100 px-1 py-0.5 text-xs">
+                  data-auth-token
+                </code>
+                . Nunca coloque login e senha no HTML.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   function renderInstallation() {
     return (
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="space-y-6">
         <Panel>
           <SectionHeading
             title="Código de incorporação"
@@ -1705,17 +2766,18 @@ export function SnippetManager({
     appearance: renderAppearance,
     behavior: renderBehavior,
     integrations: renderIntegrations,
+    authentication: renderAuthentication,
     security: renderSecurity,
     installation: renderInstallation,
   };
 
   return (
     <form
-      className="min-h-[calc(100vh-4rem)]"
+      className="flex h-[calc(100svh-3.5rem)] min-h-0 flex-col overflow-hidden"
       onSubmit={(event) => void saveSnippet(event)}
     >
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="grid min-h-0 w-full flex-1 grid-cols-1 gap-y-5 overflow-y-auto px-4 pt-6 sm:px-6 lg:px-8 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,1fr)] xl:grid-rows-[auto_auto_minmax(0,1fr)] xl:gap-x-8 xl:gap-y-0 xl:overflow-hidden">
+        <header className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-end sm:justify-between xl:col-start-1 xl:row-start-1">
           <div className="min-w-0">
             <div className="flex items-center gap-3">
               <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-950">
@@ -1739,74 +2801,43 @@ export function SnippetManager({
                   {form.isActive ? "Ativo" : "Inativo"}
                 </span>
               ) : null}
+              {project.is_premium ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                  <Crown className="size-3.5" />
+                  Projeto Premium
+                </span>
+              ) : null}
             </div>
             <p className="mt-1 text-sm leading-6 text-slate-500">
               Configure as instalações do assistente de {project.name}.
             </p>
           </div>
 
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-            <select
-              aria-label="Selecionar snippet"
-              className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 sm:w-64 sm:flex-none"
-              value={selectedId ?? ""}
-              onChange={(event) => {
-                const next = snippets.find(
-                  (item) => item.id === event.target.value,
-                );
-                if (next) selectSnippet(next);
-              }}
+          {canEdit ? (
+            <Button
+              type="submit"
+              className="w-full shrink-0 sm:w-auto"
+              disabled={
+                saving ||
+                processingImage ||
+                !dirty ||
+                (form.launcherType === "image" && !form.launcherImage)
+              }
             >
-              {!selectedId ? <option value="">Novo snippet</option> : null}
-              {snippets.map((snippet) => (
-                <option key={snippet.id} value={snippet.id}>
-                  {snippet.name}
-                </option>
-              ))}
-            </select>
-            {canEdit ? (
-              <Button type="button" onClick={startCreating}>
-                <Plus className="size-4" />
-                Novo
-              </Button>
-            ) : null}
-            {selected && canEdit ? (
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                aria-label="Duplicar snippet"
-                onClick={() => void duplicateSelected()}
-                disabled={saving}
-              >
-                <Copy className="size-4" />
-              </Button>
-            ) : null}
-            {canEdit ? (
-              <Button
-                type="submit"
-                disabled={
-                  saving ||
-                  processingImage ||
-                  !dirty ||
-                  (form.launcherType === "image" && !form.launcherImage)
-                }
-              >
-                {saving ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                {selected ? "Salvar" : "Criar"}
-              </Button>
-            ) : null}
-          </div>
+              {saving ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              {selected ? "Salvar alterações" : "Criar snippet"}
+            </Button>
+          ) : null}
+
+          {!canEdit ? (
+            <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+              Você possui acesso somente para leitura nesta organização.
+            </div>
+          ) : null}
         </header>
 
-        {!canEdit ? (
-          <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-            Você possui acesso somente para leitura nesta organização.
-          </div>
-        ) : null}
-
         <nav
-          className="mt-7 flex gap-1 overflow-x-auto border-b border-slate-200"
+          className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 xl:col-start-1 xl:row-start-2 xl:mt-7"
           role="tablist"
           aria-label="Configurações do snippet"
         >
@@ -1829,60 +2860,52 @@ export function SnippetManager({
           ))}
         </nav>
 
-        <div className="py-6">
-          {tabContent[activeTab]()}
+        <div className="min-w-0 xl:col-start-1 xl:row-start-3 xl:min-h-0 xl:overflow-y-auto">
+          <div className="py-6">
+            {tabContent[activeTab]()}
 
-          {error ? (
-            <p
-              className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-              role="alert"
-            >
-              {error}
-            </p>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 shadow-[0_-12px_30px_rgba(15,23,42,0.06)] backdrop-blur">
-        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="min-w-0 text-sm">
-            {saveStatus === "saving" ? (
-              <span className="flex items-center gap-2 text-slate-500">
-                <LoaderCircle className="size-4 animate-spin" />
-                Salvando alterações...
-              </span>
-            ) : saveStatus === "saved" ? (
-              <span className="flex items-center gap-2 text-emerald-700">
-                <CheckCircle2 className="size-4" />
-                Alterações salvas
-              </span>
-            ) : saveStatus === "error" ? (
-              <span className="flex items-center gap-2 text-red-700">
-                <AlertTriangle className="size-4" />
-                Não foi possível salvar
-              </span>
-            ) : dirty ? (
-              <span className="text-amber-700">Alterações não salvas</span>
-            ) : (
-              <span className="text-slate-400">Tudo salvo</span>
-            )}
+            {error ? (
+              <p
+                className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                role="alert"
+              >
+                {error}
+              </p>
+            ) : null}
           </div>
-          {canEdit ? (
-            <Button
-              type="submit"
-              disabled={
-                saving ||
-                processingImage ||
-                !dirty ||
-                (form.launcherType === "image" && !form.launcherImage)
-              }
+        </div>
+
+        <div className="min-w-0 xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:min-h-0 xl:overflow-hidden">
+          <div className="xl:flex xl:h-full xl:min-h-0 xl:pb-6">
+            <aside
+              className="w-full xl:min-h-0 xl:flex-1"
+              aria-label="Prévia do widget"
             >
-              {saving ? <LoaderCircle className="size-4 animate-spin" /> : null}
-              {selected ? "Salvar alterações" : "Criar snippet"}
-            </Button>
-          ) : null}
+              <SnippetPreview
+                form={form}
+                activeTab={activeTab}
+                webhookUrl={webhookUrl}
+                selected={selected}
+                isOpen={previewOpen}
+                onOpenChange={setPreviewOpen}
+              />
+            </aside>
+          </div>
         </div>
       </div>
+
+      <LucideIconPicker
+        open={iconPickerOpen}
+        value={form.launcherIcon}
+        onClose={() => setIconPickerOpen(false)}
+        onSelect={(launcherIcon) =>
+          setForm((current) => ({
+            ...current,
+            launcherType: "icon",
+            launcherIcon,
+          }))
+        }
+      />
     </form>
   );
 }

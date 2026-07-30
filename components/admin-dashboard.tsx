@@ -6,6 +6,7 @@ import {
   Activity,
   Bot,
   CircleHelp,
+  Crown,
   ExternalLink,
   Building2,
   LayoutDashboard,
@@ -382,6 +383,12 @@ function ProjectCard({
         <h3 className="mt-4 truncate text-sm font-semibold text-slate-950">
           {project.name}
         </h3>
+        {project.is_premium ? (
+          <span className="mt-2 inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
+            <Crown className="size-3" />
+            {t("admin.premiumProject")}
+          </span>
+        ) : null}
         <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
           <span className="size-1.5 rounded-full bg-emerald-500" />
           {t("admin.active")}
