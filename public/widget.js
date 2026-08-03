@@ -34,7 +34,6 @@
   if (!script) return;
 
   var snippetId = script.getAttribute("data-snippet-id");
-  var legacyProjectId = script.getAttribute("data-project-id");
   var scriptUrl;
   try {
     scriptUrl = new URL(script.src);
@@ -59,7 +58,7 @@
   }
   var previewOpen = script.getAttribute("data-preview-open") === "true";
   var previewTab = script.getAttribute("data-preview-tab");
-  var widgetId = snippetId || legacyProjectId;
+  var widgetId = snippetId;
   if (!widgetId || document.querySelector("[data-nuncius-widget]")) {
     if (!widgetId) {
       console.error("[Nuncius] data-snippet-id não informado.");
@@ -128,7 +127,6 @@
         console.error("[Nuncius] Configuração de prévia inválida.", error);
       }
     }
-    if (!snippetId) return Promise.resolve(defaults);
     return fetch(apiBase + "/api/widget/" + encodeURIComponent(snippetId))
       .then(function (response) {
         if (!response.ok) throw new Error("Configuração indisponível.");
@@ -826,7 +824,6 @@
           Object.assign(
             {
               snippetId: snippetId,
-              projectId: legacyProjectId,
               sessionId: sessionId,
               authToken: authToken || undefined,
             },

@@ -217,6 +217,10 @@ O painel gera o snippet completo:
 ></script>
 ```
 
+`data-snippet-id` é obrigatório. Incorporações antigas baseadas apenas em
+`data-project-id` são rejeitadas porque não identificam a política de origem
+que deve ser aplicada.
+
 O script descobre a URL da API pela própria origem. Para apontar o widget a
 outro backend, opcionalmente use `data-api-url`.
 

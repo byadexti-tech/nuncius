@@ -80,3 +80,42 @@ test("does not mount the widget when its configuration cannot be validated", asy
   assert.equal(appendedNodes.length, 0);
   assert.equal(errors.length, 1);
 });
+
+test("does not mount legacy project-only embeds that bypass origin policy", async () => {
+  const appendedNodes = [];
+  const errors = [];
+  let fetchCalls = 0;
+  const attributes = {
+    "data-project-id": "35fe1c70-0f6c-4fd7-908d-0458bb3ab81a",
+  };
+
+  const context = {
+    URL,
+    console: {
+      error: (...args) => errors.push(args),
+    },
+    document: {
+      currentScript: {
+        src: "https://widget.example/widget.js",
+        getAttribute: (name) => attributes[name] ?? null,
+      },
+      querySelector: () => null,
+      body: {
+        appendChild: (node) => appendedNodes.push(node),
+      },
+    },
+    fetch: () => {
+      fetchCalls += 1;
+      return Promise.resolve({ ok: true });
+    },
+  };
+  context.window = context;
+  context.window.parent = context.window;
+
+  vm.runInNewContext(widgetSource, context);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(fetchCalls, 0);
+  assert.equal(appendedNodes.length, 0);
+  assert.match(String(errors[0]?.[0]), /data-snippet-id/);
+});

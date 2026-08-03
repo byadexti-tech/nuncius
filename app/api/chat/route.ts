@@ -9,7 +9,7 @@ import {
   recordAnalyticsEvent,
   recordSecurityEvent,
 } from "@/lib/observability";
-import { isValidProjectId } from "@/lib/validation";
+import { isValidSnippetId } from "@/lib/validation";
 import {
   WEBHOOK_TIMEOUT_MS,
   WEBHOOK_TIMEOUT_SECONDS,
@@ -62,7 +62,7 @@ function extractReply(payload: unknown): string | null {
 
 export async function OPTIONS(request: Request) {
   const snippetId = new URL(request.url).searchParams.get("snippetId") ?? "";
-  const snippet = isValidProjectId(snippetId) ? await getSnippet(snippetId) : null;
+  const snippet = isValidSnippetId(snippetId) ? await getSnippet(snippetId) : null;
   const origin = request.headers.get("origin");
   const allowed = !!snippet && snippet.is_active && originAllowed(snippet, origin);
   return new Response(null, { status: allowed ? 204 : 403, headers: corsHeaders(origin, allowed, "POST, OPTIONS") });
@@ -111,8 +111,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    const projectId =
-      typeof body.projectId === "string" ? body.projectId.trim() : "";
     const snippetId = typeof body.snippetId === "string" ? body.snippetId.trim() : new URL(request.url).searchParams.get("snippetId")?.trim() ?? "";
     const sessionId =
       typeof body.sessionId === "string" ? body.sessionId.trim() : "";
@@ -122,18 +120,15 @@ export async function POST(request: Request) {
     const authToken =
       typeof body.authToken === "string" ? body.authToken.trim() : "";
 
-    if (
-      (!snippetId || !isValidProjectId(snippetId)) &&
-      (!projectId || !isValidProjectId(projectId))
-    ) {
+    if (!snippetId || !isValidSnippetId(snippetId)) {
       return json({ error: "Snippet inválido." }, requestId, { status: 400 });
     }
     if (!sessionId || sessionId.length > 120) {
       return json({ error: "Sessão inválida." }, requestId, { status: 400 });
     }
 
-    const snippet = snippetId ? await getSnippet(snippetId) : null;
-    if (snippetId && !snippet) {
+    const snippet = await getSnippet(snippetId);
+    if (!snippet) {
       return json(
         { error: "Snippet não encontrado." },
         requestId,
@@ -141,12 +136,12 @@ export async function POST(request: Request) {
       );
     }
     const origin = request.headers.get("origin");
-    const allowed = snippet ? snippet.is_active && originAllowed(snippet, origin) : true;
+    const allowed = snippet.is_active && originAllowed(snippet, origin);
     if (!allowed) {
       return json({ error: "Origem ou snippet não autorizado." }, requestId, { status: 403 }, origin, false);
     }
     if (
-      snippet?.auth_enabled &&
+      snippet.auth_enabled &&
       (!authToken || authToken.length > 4096)
     ) {
       return json(
@@ -158,7 +153,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const resolvedProjectId = snippet?.project_id ?? projectId;
+    const resolvedProjectId = snippet.project_id;
     const project = await getProject(resolvedProjectId);
     if (!project) {
       return json(

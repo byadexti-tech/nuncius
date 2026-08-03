@@ -47,7 +47,7 @@ mensagens trocadas entre os visitantes e o n8n de cada cliente.
   mas não autenticam chamadas servidor-servidor.
 - [ ] Usar um identificador público rotacionável por instalação para
   atribuição e revogação. Não tratá-lo como segredo inviolável.
-- [ ] Remover, após período de migração, o roteamento legado por `projectId`;
+- [x] Remover o roteamento legado por `projectId`;
   aceitar somente instalações ativas e identificadas por `snippetId`.
 - [ ] Persistir por sessão o evento de auto-start para não chamar o workflow
   novamente a cada reload ou navegação.
@@ -326,7 +326,8 @@ mensagens trocadas entre os visitantes e o n8n de cada cliente.
 - [ ] Habilitar `direct` para novos snippets por padrão.
 - [ ] Migrar clientes existentes em lotes, com métricas e rollback por tenant.
 - [ ] Avisar clientes sobre requisitos de CORS, rate limit e front door.
-- [ ] Desativar `projectId` legado depois da janela comunicada.
+- [x] Desativar `projectId` legado antecipadamente para fechar o bypass da
+  política de origem.
 - [ ] Transformar o relay em add-on com aceite, quota e preço explícitos.
 
 ### Etapa 4 — encerrar compatibilidade temporária
