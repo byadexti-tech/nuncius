@@ -7,7 +7,7 @@ import type {
 } from "@/lib/types";
 
 const SNIPPET_COLUMNS =
-  "id,project_id,name,launcher_type,launcher_icon,launcher_image,primary_color,theme_mode,appearance_customizations_enabled,light_background_color,light_text_color,dark_background_color,dark_text_color,light_primary_color,light_primary_text_color,dark_primary_color,dark_primary_text_color,hide_powered_by,header_title,show_online_status,font_family,position,auto_start_enabled,auto_start_message,activation_mode,activation_prompt,activation_questions,show_input_with_predefined_questions,loading_messages,auth_enabled,auth_mode,auth_title,auth_description,is_active,origin_policy,allowed_origins,created_at,updated_at";
+  "id,project_id,name,launcher_type,launcher_icon,launcher_image,primary_color,theme_mode,appearance_customizations_enabled,light_background_color,light_text_color,dark_background_color,dark_text_color,light_primary_color,light_primary_text_color,dark_primary_color,dark_primary_text_color,hide_powered_by,header_title,show_online_status,font_family,position,auto_start_enabled,auto_start_message,activation_mode,activation_prompt,activation_questions,show_input_with_predefined_questions,loading_messages,intro_phrases,auth_enabled,auth_mode,auth_title,auth_description,is_active,origin_policy,allowed_origins,created_at,updated_at";
 
 function toDatabaseInput(input: SnippetInput) {
   return {
@@ -39,6 +39,7 @@ function toDatabaseInput(input: SnippetInput) {
     show_input_with_predefined_questions:
       input.showInputWithPredefinedQuestions,
     loading_messages: input.loadingMessages,
+    intro_phrases: input.introPhrases,
     auth_enabled: input.authEnabled,
     auth_mode: input.authMode,
     auth_title: input.authTitle,
@@ -106,6 +107,7 @@ export async function getPublicSnippetConfig(
     showInputWithPredefinedQuestions:
       snippet.show_input_with_predefined_questions,
     loadingMessages: snippet.loading_messages,
+    introPhrases: snippet.intro_phrases,
     authEnabled: snippet.auth_enabled,
     authMode: snippet.auth_mode,
     authTitle: snippet.auth_title,
@@ -175,6 +177,7 @@ export async function duplicateSnippet(id: string): Promise<Snippet | null> {
     showInputWithPredefinedQuestions:
       original.show_input_with_predefined_questions,
     loadingMessages: original.loading_messages,
+    introPhrases: original.intro_phrases,
     authEnabled: original.auth_enabled,
     authMode: original.auth_mode,
     authTitle: original.auth_title,

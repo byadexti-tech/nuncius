@@ -7,6 +7,7 @@ import {
   SNIPPET_POSITIONS,
   SNIPPET_THEMES,
   type ProjectInput,
+  type SnippetIntroPhrase,
   type SnippetInput,
 } from "@/lib/types";
 
@@ -20,6 +21,15 @@ type SnippetValidationResult =
 
 const MAX_LAUNCHER_IMAGE_LENGTH = 400_000;
 const PNG_DATA_URL_PATTERN = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/;
+const DEFAULT_INTRO_PHRASES: SnippetIntroPhrase[] = [
+  { text: "Uma revolução chegou para ficar.", durationMs: 2500 },
+  { text: "A IA veio para revolucionar.", durationMs: 2500 },
+  {
+    text: "Mais ideias. Respostas mais rápidas. Novas possibilidades.",
+    durationMs: 2500,
+  },
+  { text: "E agora, tudo isso está ao seu alcance.", durationMs: 2500 },
+];
 
 function isSquarePngDataUrl(value: string) {
   const match = value.match(PNG_DATA_URL_PATTERN);
@@ -170,6 +180,24 @@ export function validateSnippetInput(value: unknown): SnippetValidationResult {
   const loadingMessages = rawLoadingMessages.map((message) =>
     (message as string).trim(),
   );
+  const rawIntroPhrases = Array.isArray(body.introPhrases)
+    ? body.introPhrases
+    : DEFAULT_INTRO_PHRASES;
+  if (
+    rawIntroPhrases.some(
+      (phrase) =>
+        !phrase ||
+        typeof phrase !== "object" ||
+        typeof (phrase as Record<string, unknown>).text !== "string" ||
+        typeof (phrase as Record<string, unknown>).durationMs !== "number",
+    )
+  ) {
+    return { ok: false, error: "As frases da apresentação são inválidas." };
+  }
+  const introPhrases = rawIntroPhrases.map((phrase) => ({
+    text: ((phrase as Record<string, unknown>).text as string).trim(),
+    durationMs: (phrase as Record<string, unknown>).durationMs as number,
+  }));
   const authEnabled = body.authEnabled === true;
   const authMode = typeof body.authMode === "string" ? body.authMode : "";
   const authTitle =
@@ -295,6 +323,24 @@ export function validateSnippetInput(value: unknown): SnippetValidationResult {
         "Informe entre 1 e 10 mensagens de espera, com até 80 caracteres cada.",
     };
   }
+  if (
+    introPhrases.length < 1 ||
+    introPhrases.length > 10 ||
+    introPhrases.some(
+      (phrase) =>
+        phrase.text.length < 1 ||
+        phrase.text.length > 200 ||
+        !Number.isInteger(phrase.durationMs) ||
+        phrase.durationMs < 500 ||
+        phrase.durationMs > 15_000,
+    )
+  ) {
+    return {
+      ok: false,
+      error:
+        "Informe entre 1 e 10 frases de apresentação, com até 200 caracteres e duração entre 0,5 e 15 segundos.",
+    };
+  }
   if (!SNIPPET_AUTH_MODES.includes(authMode as SnippetInput["authMode"])) {
     return { ok: false, error: "Escolha um método de autenticação válido." };
   }
@@ -350,6 +396,7 @@ export function validateSnippetInput(value: unknown): SnippetValidationResult {
       activationQuestions,
       showInputWithPredefinedQuestions,
       loadingMessages,
+      introPhrases,
       authEnabled,
       authMode: authMode as SnippetInput["authMode"],
       authTitle,

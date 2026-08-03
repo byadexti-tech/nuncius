@@ -89,6 +89,11 @@ export type SnippetActivationMode =
   (typeof SNIPPET_ACTIVATION_MODES)[number];
 export type SnippetAuthMode = (typeof SNIPPET_AUTH_MODES)[number];
 
+export type SnippetIntroPhrase = {
+  text: string;
+  durationMs: number;
+};
+
 export type Snippet = {
   id: string;
   project_id: string;
@@ -119,6 +124,7 @@ export type Snippet = {
   activation_questions: string[];
   show_input_with_predefined_questions: boolean;
   loading_messages: string[];
+  intro_phrases: SnippetIntroPhrase[];
   auth_enabled: boolean;
   auth_mode: SnippetAuthMode;
   auth_title: string;
@@ -158,6 +164,7 @@ export type SnippetInput = {
   activationQuestions: string[];
   showInputWithPredefinedQuestions: boolean;
   loadingMessages: string[];
+  introPhrases: SnippetIntroPhrase[];
   authEnabled: boolean;
   authMode: SnippetAuthMode;
   authTitle: string;
@@ -194,6 +201,7 @@ export type PublicSnippetConfig = {
   activationQuestions: string[];
   showInputWithPredefinedQuestions: boolean;
   loadingMessages: string[];
+  introPhrases: SnippetIntroPhrase[];
   authEnabled: boolean;
   authMode: SnippetAuthMode;
   authTitle: string;

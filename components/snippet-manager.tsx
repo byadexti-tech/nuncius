@@ -104,6 +104,16 @@ const DEFAULT_LOADING_MESSAGES = [
   "Escolhendo a melhor resposta...",
 ];
 
+const DEFAULT_INTRO_PHRASES = [
+  { text: "Uma revolução chegou para ficar.", durationMs: 2500 },
+  { text: "A IA veio para revolucionar.", durationMs: 2500 },
+  {
+    text: "Mais ideias. Respostas mais rápidas. Novas possibilidades.",
+    durationMs: 2500,
+  },
+  { text: "E agora, tudo isso está ao seu alcance.", durationMs: 2500 },
+];
+
 const DEFAULT_INPUT: SnippetInput = {
   name: "Novo snippet",
   launcherType: "icon",
@@ -132,6 +142,7 @@ const DEFAULT_INPUT: SnippetInput = {
   activationQuestions: [],
   showInputWithPredefinedQuestions: true,
   loadingMessages: DEFAULT_LOADING_MESSAGES,
+  introPhrases: DEFAULT_INTRO_PHRASES,
   authEnabled: false,
   authMode: "manual",
   authTitle: "Acesse sua conta",
@@ -216,6 +227,7 @@ function toInput(snippet: Snippet): SnippetInput {
     showInputWithPredefinedQuestions:
       snippet.show_input_with_predefined_questions,
     loadingMessages: snippet.loading_messages,
+    introPhrases: snippet.intro_phrases,
     authEnabled: snippet.auth_enabled,
     authMode: snippet.auth_mode,
     authTitle: snippet.auth_title,
@@ -1842,6 +1854,28 @@ export function SnippetManager({
   }
 
   function renderBehavior() {
+    function updateIntroPhrase(
+      index: number,
+      field: "text" | "durationMs",
+      value: string | number,
+    ) {
+      setForm((current) => ({
+        ...current,
+        introPhrases: current.introPhrases.map((phrase, phraseIndex) =>
+          phraseIndex === index ? { ...phrase, [field]: value } : phrase,
+        ),
+      }));
+    }
+
+    function removeIntroPhrase(index: number) {
+      setForm((current) => ({
+        ...current,
+        introPhrases: current.introPhrases.filter(
+          (_, phraseIndex) => phraseIndex !== index,
+        ),
+      }));
+    }
+
     function updateActivationQuestion(index: number, value: string) {
       setForm((current) => ({
         ...current,
@@ -1883,52 +1917,135 @@ export function SnippetManager({
     return (
       <Panel>
         <SectionHeading
-          title="Início da conversa"
-          description="Defina se o n8n deve ser acionado automaticamente quando o visitante abrir o chat."
+          title="Apresentação inicial"
+          description="Personalize as frases exibidas antes da primeira abertura do chat e o tempo de cada uma na tela."
         />
-        <label className="flex items-start justify-between gap-5 rounded-xl border border-slate-200 p-4">
-          <span>
-            <span className="block text-sm font-semibold text-slate-900">
-              Saudação via webhook
-            </span>
-            <span className="mt-1 block text-sm leading-6 text-slate-500">
-              Envia um evento técnico ao webhook e mostra a resposta como
-              primeira mensagem.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            className="mt-1 size-5 shrink-0 rounded border-slate-300 accent-violet-600"
-            checked={form.autoStartEnabled}
-            disabled={!canEdit}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                autoStartEnabled: event.target.checked,
-              }))
-            }
-          />
-        </label>
+        <div className="space-y-3">
+          {form.introPhrases.map((phrase, index) => (
+            <div
+              key={index}
+              className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-end"
+            >
+              <div className="min-w-0 space-y-1.5">
+                <Label htmlFor={`intro-phrase-${index}`}>
+                  Frase {index + 1}
+                </Label>
+                <Input
+                  id={`intro-phrase-${index}`}
+                  value={phrase.text}
+                  maxLength={200}
+                  disabled={!canEdit}
+                  placeholder="Ex.: Uma revolução chegou para ficar."
+                  onChange={(event) =>
+                    updateIntroPhrase(index, "text", event.target.value)
+                  }
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`intro-duration-${index}`}>Tempo (s)</Label>
+                <Input
+                  id={`intro-duration-${index}`}
+                  type="number"
+                  min="0.5"
+                  max="15"
+                  step="0.1"
+                  value={phrase.durationMs / 1000}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    updateIntroPhrase(
+                      index,
+                      "durationMs",
+                      Math.round(Number(event.target.value) * 1000),
+                    )
+                  }
+                />
+              </div>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="shrink-0 text-slate-500 hover:text-red-600"
+                aria-label={`Remover frase de apresentação ${index + 1}`}
+                disabled={!canEdit || form.introPhrases.length === 1}
+                onClick={() => removeIntroPhrase(index)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-4 w-full"
+          disabled={!canEdit || form.introPhrases.length >= 10}
+          onClick={() =>
+            setForm((current) => ({
+              ...current,
+              introPhrases: [
+                ...current.introPhrases,
+                { text: "", durationMs: 2500 },
+              ],
+            }))
+          }
+        >
+          <Plus className="size-4" />
+          Adicionar frase à apresentação
+        </Button>
+        <p className="mt-3 text-xs leading-5 text-slate-500">
+          Use de 1 a 10 frases. Cada uma pode ter até 200 caracteres e ficar
+          entre 0,5 e 15 segundos na tela.
+        </p>
 
-        <div className="mt-6 space-y-2">
-          <Label htmlFor="auto-start-message">Mensagem de ativação</Label>
-          <textarea
-            id="auto-start-message"
-            className="min-h-32 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-400"
-            value={form.autoStartMessage}
-            maxLength={4000}
-            disabled={!canEdit || !form.autoStartEnabled}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                autoStartMessage: event.target.value,
-              }))
-            }
+        <div className="mt-8 border-t border-slate-200 pt-8">
+          <SectionHeading
+            title="Início da conversa"
+            description="Defina se o n8n deve ser acionado automaticamente quando o visitante abrir o chat."
           />
-          <p className="text-xs leading-5 text-slate-500">
-            Este conteúdo é enviado como instrução técnica e não aparece
-            diretamente para o visitante.
-          </p>
+          <label className="flex items-start justify-between gap-5 rounded-xl border border-slate-200 p-4">
+            <span>
+              <span className="block text-sm font-semibold text-slate-900">
+                Saudação via webhook
+              </span>
+              <span className="mt-1 block text-sm leading-6 text-slate-500">
+                Envia um evento técnico ao webhook e mostra a resposta como
+                primeira mensagem.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="mt-1 size-5 shrink-0 rounded border-slate-300 accent-violet-600"
+              checked={form.autoStartEnabled}
+              disabled={!canEdit}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  autoStartEnabled: event.target.checked,
+                }))
+              }
+            />
+          </label>
+
+          <div className="mt-6 space-y-2">
+            <Label htmlFor="auto-start-message">Mensagem de ativação</Label>
+            <textarea
+              id="auto-start-message"
+              className="min-h-32 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-400"
+              value={form.autoStartMessage}
+              maxLength={4000}
+              disabled={!canEdit || !form.autoStartEnabled}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  autoStartMessage: event.target.value,
+                }))
+              }
+            />
+            <p className="text-xs leading-5 text-slate-500">
+              Este conteúdo é enviado como instrução técnica e não aparece
+              diretamente para o visitante.
+            </p>
+          </div>
         </div>
 
         <fieldset className="mt-8">

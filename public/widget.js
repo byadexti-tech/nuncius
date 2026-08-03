@@ -1,6 +1,35 @@
 (function () {
   "use strict";
 
+  function parseMessageParts(text) {
+    var value = typeof text === "string" ? text : String(text || "");
+    var linkPattern = /\[([^\]\r\n]+)\]\s*\((https?:\/\/[^\s)]+)\)/gi;
+    var parts = [];
+    var cursor = 0;
+    var match;
+
+    while ((match = linkPattern.exec(value)) !== null) {
+      if (match.index > cursor) {
+        parts.push({ type: "text", value: value.slice(cursor, match.index) });
+      }
+      parts.push({ type: "link", label: match[1].trim(), href: match[2] });
+      cursor = match.index + match[0].length;
+    }
+
+    if (cursor < value.length || !parts.length) {
+      parts.push({ type: "text", value: value.slice(cursor) });
+    }
+
+    return parts;
+  }
+
+  if (
+    typeof globalThis !== "undefined" &&
+    globalThis.__NUNCIUS_TEST_HOOKS__
+  ) {
+    globalThis.__NUNCIUS_TEST_HOOKS__.parseMessageParts = parseMessageParts;
+  }
+
   var script = document.currentScript;
   if (!script) return;
 
@@ -29,6 +58,7 @@
     }
   }
   var previewOpen = script.getAttribute("data-preview-open") === "true";
+  var previewTab = script.getAttribute("data-preview-tab");
   var widgetId = snippetId || legacyProjectId;
   if (!widgetId || document.querySelector("[data-nuncius-widget]")) {
     if (!widgetId) {
@@ -68,6 +98,15 @@
       "Pensando...",
       "Escolhendo a melhor resposta...",
     ],
+    introPhrases: [
+      { text: "Uma revolução chegou para ficar.", durationMs: 2500 },
+      { text: "A IA veio para revolucionar.", durationMs: 2500 },
+      {
+        text: "Mais ideias. Respostas mais rápidas. Novas possibilidades.",
+        durationMs: 2500,
+      },
+      { text: "E agora, tudo isso está ao seu alcance.", durationMs: 2500 },
+    ],
     authEnabled: false,
     authMode: "manual",
     authTitle: "Acesse sua conta",
@@ -100,7 +139,7 @@
       })
       .catch(function (error) {
         console.error("[Nuncius]", error);
-        return defaults;
+        return null;
       });
   }
 
@@ -134,6 +173,7 @@
   }
 
   loadConfig().then(function (config) {
+    if (!config) return;
     return loadLauncherIcon(config).then(function (launcherIconMarkup) {
       config.launcherIconMarkup = launcherIconMarkup;
       mountWidget(config);
@@ -141,6 +181,32 @@
   });
 
   function mountWidget(config) {
+    var introPhrases = Array.isArray(config.introPhrases)
+      ? config.introPhrases
+          .filter(function (phrase) {
+            return (
+              phrase &&
+              typeof phrase.text === "string" &&
+              phrase.text.trim() &&
+              typeof phrase.durationMs === "number" &&
+              Number.isFinite(phrase.durationMs)
+            );
+          })
+          .slice(0, 10)
+          .map(function (phrase) {
+            return {
+              text: phrase.text.trim().slice(0, 200),
+              durationMs: Math.min(
+                15000,
+                Math.max(500, Math.round(phrase.durationMs)),
+              ),
+            };
+          })
+      : [];
+    if (!introPhrases.length) introPhrases = defaults.introPhrases;
+    var introTotalDuration = introPhrases.reduce(function (total, phrase) {
+      return total + phrase.durationMs;
+    }, 0);
     var storageKey = "nuncius:session:" + widgetId;
     var sessionId = null;
     try {
@@ -194,10 +260,9 @@
       ".nc-intro-stage{position:relative;z-index:1;width:100%;height:100%;display:grid;place-items:center;text-align:center}",
       ".nc-intro-copy{position:relative;z-index:2;width:100%;height:220px;display:grid;place-items:center}",
       ".nc-intro-scene{position:absolute;margin:0;padding:0 8px;font-size:clamp(25px,8.5vw,36px);font-weight:750;line-height:1.04;letter-spacing:-.045em;text-wrap:balance;opacity:0;transform:translateY(30px) scale(.98)}",
-      ".nc-intro-scene strong{color:inherit;font-weight:inherit}",
-      ".nc-intro.nc-running .nc-intro-scene{animation:nc-intro-copy 2.8s cubic-bezier(.16,1,.3,1) both}.nc-intro.nc-running .nc-intro-scene:nth-child(2){animation-delay:2.35s}.nc-intro.nc-running .nc-intro-scene:nth-child(3){animation-delay:4.7s}.nc-intro.nc-running .nc-intro-scene:nth-child(4){animation-delay:7.05s}",
+      ".nc-intro.nc-running .nc-intro-scene{animation:nc-intro-copy var(--nc-intro-duration) cubic-bezier(.16,1,.3,1) both;animation-delay:var(--nc-intro-delay)}",
       ".nc-intro-progress{position:absolute;inset:auto 0 0;z-index:2;height:3px;background:var(--nc-border);overflow:hidden}.nc-intro-progress i{display:block;width:100%;height:100%;background:var(--nc-muted);transform:scaleX(0);transform-origin:left}",
-      ".nc-intro.nc-running .nc-intro-progress i{animation:nc-intro-progress 10s linear both}",
+      ".nc-intro.nc-running .nc-intro-progress i{animation:nc-intro-progress var(--nc-intro-total-duration) linear both}",
       ".nc-launcher{width:58px;height:58px;border:0;border-radius:18px;background:var(--nc-primary);color:var(--nc-button-text);display:grid;place-items:center;cursor:pointer;box-shadow:0 14px 38px color-mix(in srgb,var(--nc-primary) 42%,transparent);transition:transform .18s ease,filter .18s ease}",
       ".nc-launcher:hover,.nc-send:hover{filter:brightness(.9)}.nc-launcher:hover{transform:translateY(-2px)}.nc-launcher:focus-visible,.nc-send:focus-visible,.nc-header-button:focus-visible{outline:3px solid color-mix(in srgb,var(--nc-primary) 28%,transparent);outline-offset:3px}",
       ".nc-icon{width:25px;height:25px;display:block}",
@@ -216,6 +281,7 @@
       ".nc-row{display:flex;margin-bottom:12px}.nc-row.nc-user{justify-content:flex-end}",
       ".nc-content{width:max-content;min-width:0;max-width:82%}.nc-bubble{padding:11px 13px;border-radius:15px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal;background:var(--nc-surface);color:var(--nc-text);border:1px solid var(--nc-border);border-bottom-left-radius:5px}.nc-row>.nc-bubble{max-width:82%}",
       ".nc-user .nc-bubble{background:var(--nc-primary);color:var(--nc-button-text);border-color:var(--nc-primary);border-bottom-left-radius:15px;border-bottom-right-radius:5px}",
+      ".nc-message-link{display:inline-flex;align-items:center;justify-content:center;max-width:100%;margin:4px 0;padding:9px 12px;border-radius:10px;background:var(--nc-primary);color:var(--nc-button-text);font-weight:700;line-height:1.25;text-align:center;text-decoration:none;white-space:normal;transition:filter .15s ease,transform .15s ease}.nc-message-link:hover{filter:brightness(.92);transform:translateY(-1px)}.nc-message-link:focus-visible{outline:0;box-shadow:0 0 0 3px color-mix(in srgb,var(--nc-primary) 24%,transparent)}",
       ".nc-time{font-size:10px;color:var(--nc-muted);margin-top:5px;padding:0 4px}.nc-user .nc-time{text-align:right}",
       ".nc-compose{flex:0 0 auto;padding:12px;border-top:1px solid var(--nc-border);background:var(--nc-surface);display:flex;align-items:flex-end;gap:8px}.nc-compose[hidden]{display:none}",
       ".nc-input{min-width:0;flex:1;resize:none;max-height:96px;height:42px;border:1px solid var(--nc-border);border-radius:13px;padding:10px 12px;font:13.5px/20px inherit;color:var(--nc-text);background:var(--nc-surface);outline:none}.nc-input:focus{border-color:var(--nc-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--nc-primary) 12%,transparent)}.nc-input::placeholder{color:var(--nc-muted)}",
@@ -226,7 +292,7 @@
       "@keyframes nc-starter-in{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}",
       "@keyframes nc-intro-orb-violet{0%{opacity:.62;transform:translate3d(-10px,-8px,0) scale(.86)}50%{opacity:.88;transform:translate3d(86px,74px,0) scale(1.08)}100%{opacity:.68;transform:translate3d(34px,170px,0) scale(.94)}}",
       "@keyframes nc-intro-orb-blue{0%{opacity:.58;transform:translate3d(8px,10px,0) scale(.9)}50%{opacity:.82;transform:translate3d(-92px,-82px,0) scale(1.1)}100%{opacity:.64;transform:translate3d(-42px,-176px,0) scale(.96)}}",
-      "@keyframes nc-intro-copy{0%{opacity:0;transform:translateY(30px) scale(.98);filter:blur(8px)}18%,70%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}100%{opacity:0;transform:translateY(-24px) scale(1.015);filter:blur(6px)}}",
+      "@keyframes nc-intro-copy{0%{opacity:0;transform:translateY(30px) scale(.98);filter:blur(8px)}16%,78%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}100%{opacity:0;transform:translateY(-24px) scale(1.015);filter:blur(6px)}}",
       "@keyframes nc-intro-progress{to{transform:scaleX(1)}}",
       ".nc-powered{text-align:center;font-size:9px;color:var(--nc-muted);background:var(--nc-surface);padding:0 0 8px}",
       ".nc-wrap.nc-dark{--nc-surface:#151823;--nc-surface-soft:#0f1119;--nc-text:#f4f5f8;--nc-muted:#949bad;--nc-border:#292e3d;--nc-shadow:rgba(0,0,0,.46)}",
@@ -271,10 +337,7 @@
     wrap.innerHTML =
       '<section class="nc-panel" role="dialog" aria-label="Chat Nuncius" aria-hidden="true">' +
       '<div class="nc-intro" aria-labelledby="nc-intro-title" aria-hidden="true" tabindex="-1">' +
-      '<div class="nc-intro-stage"><div class="nc-intro-copy"><p class="nc-intro-scene" id="nc-intro-title">Uma revolução chegou para <strong>ficar.</strong></p>' +
-      '<p class="nc-intro-scene">A IA veio para <strong>revolucionar.</strong></p>' +
-      '<p class="nc-intro-scene">Mais ideias. Respostas mais rápidas. <strong>Novas possibilidades.</strong></p>' +
-      '<p class="nc-intro-scene">E agora, tudo isso está ao <strong>seu alcance.</strong></p></div></div>' +
+      '<div class="nc-intro-stage"><div class="nc-intro-copy"></div></div>' +
       '<div class="nc-intro-progress" aria-hidden="true"><i></i></div></div>' +
       '<header class="nc-header"><div class="nc-avatar">' +
       chatArtwork +
@@ -312,6 +375,21 @@
     }
     shadow.appendChild(style);
     shadow.appendChild(wrap);
+    var introCopy = wrap.querySelector(".nc-intro-copy");
+    var introDelay = 0;
+    introPhrases.forEach(function (phrase, index) {
+      var scene = document.createElement("p");
+      scene.className = "nc-intro-scene";
+      if (index === 0) scene.id = "nc-intro-title";
+      scene.textContent = phrase.text;
+      scene.style.setProperty("--nc-intro-duration", phrase.durationMs + "ms");
+      scene.style.setProperty("--nc-intro-delay", introDelay + "ms");
+      introCopy.appendChild(scene);
+      introDelay += phrase.durationMs;
+    });
+    wrap
+      .querySelector(".nc-intro")
+      .style.setProperty("--nc-intro-total-duration", introTotalDuration + "ms");
     wrap.querySelector(".nc-title").textContent = config.headerTitle;
 
     var colorQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -447,7 +525,23 @@
       content.className = "nc-content";
       var bubble = document.createElement("div");
       bubble.className = "nc-bubble";
-      bubble.textContent = text;
+      if (sender === "user") {
+        bubble.textContent = text;
+      } else {
+        parseMessageParts(text).forEach(function (part) {
+          if (part.type === "text") {
+            bubble.appendChild(document.createTextNode(part.value));
+            return;
+          }
+          var link = document.createElement("a");
+          link.className = "nc-message-link";
+          link.href = part.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = part.label;
+          bubble.appendChild(link);
+        });
+      }
       var time = document.createElement("div");
       time.className = "nc-time";
       time.textContent = now();
@@ -718,7 +812,10 @@
       var reducedMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)",
       ).matches;
-      introTimer = window.setTimeout(completeIntro, reducedMotion ? 1200 : 10000);
+      introTimer = window.setTimeout(
+        completeIntro,
+        reducedMotion ? 1200 : introTotalDuration,
+      );
     }
 
     function requestReply(payload) {
@@ -934,7 +1031,9 @@
       sendMessage(message);
     });
 
-    if (previewOpen) {
+    if (previewOpen && previewMode && previewTab === "behavior") {
+      showIntro();
+    } else if (previewOpen) {
       isOpen = true;
       panel.classList.add("nc-open");
       panel.setAttribute("aria-hidden", "false");
